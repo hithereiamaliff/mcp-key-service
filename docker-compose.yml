@@ -1,0 +1,30 @@
+services:
+  mcp-key-service:
+    build: .
+    container_name: mcp-key-service
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8090"  # Localhost only — not exposed to the network
+    environment:
+      - PORT=8090
+      - ADMIN_API_KEY=${ADMIN_API_KEY}
+      - KEY_ENCRYPTION_SECRET=${KEY_ENCRYPTION_SECRET}
+      - INTERNAL_SERVER_TOKENS=${INTERNAL_SERVER_TOKENS}
+      - DATA_DIR=/app/data
+      - TRUST_PROXY=${TRUST_PROXY:-0}
+    volumes:
+      - key-data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - mcp-network
+
+volumes:
+  key-data:
+
+networks:
+  mcp-network:
+    external: true
