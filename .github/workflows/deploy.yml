@@ -50,17 +50,38 @@ jobs:
             docker compose build --no-cache
             docker compose up -d
 
-            # Wait for health check
-            echo "Waiting for health check..."
+            # Wait for backend health check
+            echo "Waiting for backend health check..."
+            backend_healthy=0
             for i in $(seq 1 15); do
               if curl -sf http://127.0.0.1:8090/health > /dev/null 2>&1; then
-                echo "Health check passed!"
-                docker compose ps
-                exit 0
+                echo "Backend health check passed!"
+                backend_healthy=1
+                break
               fi
               sleep 2
             done
+            if [ "$backend_healthy" -ne 1 ]; then
+              echo "Backend health check failed after 30 seconds"
+              docker compose logs --tail=50 mcp-key-service
+              exit 1
+            fi
 
-            echo "Health check failed after 30 seconds"
-            docker compose logs --tail=30
-            exit 1
+            # Wait for portal health check
+            echo "Waiting for portal health check..."
+            portal_healthy=0
+            for i in $(seq 1 15); do
+              if curl -sf http://127.0.0.1:3001 > /dev/null 2>&1; then
+                echo "Portal health check passed!"
+                portal_healthy=1
+                break
+              fi
+              sleep 2
+            done
+            if [ "$portal_healthy" -ne 1 ]; then
+              echo "Portal health check failed after 30 seconds"
+              docker compose logs --tail=50 mcp-key-portal
+              exit 1
+            fi
+
+            docker compose ps

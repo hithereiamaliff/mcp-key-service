@@ -63,6 +63,192 @@ export const CONNECTORS: Record<string, Connector> = {
     ],
     servers: ['ghost-cms'],
   },
+  'keywords-everywhere': {
+    label: 'Keywords Everywhere',
+    fields: [
+      {
+        key: 'apiKey',
+        label: 'API Key',
+        type: 'password',
+        required: true,
+        helpText: 'Get your API key from keywordseverywhere.com → API',
+      },
+    ],
+    servers: ['keywords-everywhere'],
+  },
+  grabmaps: {
+    label: 'GrabMaps',
+    fields: [
+      {
+        key: 'grabMapsApiKey',
+        label: 'GrabMaps API Key',
+        type: 'password',
+        required: true,
+      },
+      {
+        key: 'awsAccessKeyId',
+        label: 'AWS Access Key ID',
+        type: 'text',
+        required: true,
+      },
+      {
+        key: 'awsSecretAccessKey',
+        label: 'AWS Secret Access Key',
+        type: 'password',
+        required: true,
+      },
+      {
+        key: 'awsRegion',
+        label: 'AWS Region',
+        type: 'text',
+        required: true,
+        placeholder: 'ap-southeast-1',
+      },
+    ],
+    servers: ['grabmaps'],
+  },
+  github: {
+    label: 'GitHub',
+    fields: [
+      {
+        key: 'token',
+        label: 'Personal Access Token',
+        type: 'password',
+        required: true,
+        helpText: 'Generate at GitHub → Settings → Developer settings → Personal access tokens',
+      },
+    ],
+    servers: ['github'],
+  },
+  'brave-search': {
+    label: 'Brave Search',
+    fields: [
+      {
+        key: 'apiKey',
+        label: 'API Key',
+        type: 'password',
+        required: true,
+        helpText: 'Get your API key from brave.com/search/api',
+      },
+    ],
+    servers: ['brave-search'],
+  },
+  exa: {
+    label: 'Exa.ai',
+    fields: [
+      {
+        key: 'apiKey',
+        label: 'API Key',
+        type: 'password',
+        required: true,
+        helpText: 'Get your API key from exa.ai/dashboard',
+      },
+    ],
+    servers: ['exa'],
+  },
+  perplexity: {
+    label: 'Perplexity',
+    fields: [
+      {
+        key: 'apiKey',
+        label: 'API Key',
+        type: 'password',
+        required: true,
+        helpText: 'Get your API key from perplexity.ai/settings/api',
+      },
+    ],
+    servers: ['perplexity'],
+  },
+  reddit: {
+    label: 'Reddit',
+    fields: [
+      {
+        key: 'client_id',
+        label: 'Client ID',
+        type: 'text',
+        required: true,
+        helpText: 'Create an app at reddit.com/prefs/apps',
+      },
+      {
+        key: 'client_secret',
+        label: 'Client Secret',
+        type: 'password',
+        required: true,
+      },
+    ],
+    servers: ['reddit'],
+  },
+  openwebui: {
+    label: 'Open WebUI',
+    fields: [
+      {
+        key: 'url',
+        label: 'Open WebUI URL',
+        type: 'url',
+        required: true,
+        placeholder: 'https://chat.example.com',
+      },
+      {
+        key: 'key',
+        label: 'API Key',
+        type: 'password',
+        required: true,
+        helpText: 'Found in Open WebUI → Settings → Account → API Keys',
+      },
+    ],
+    servers: ['openwebui'],
+  },
+  datagovmy: {
+    label: 'Malaysia Open Data',
+    fields: [
+      {
+        key: 'googleMapsApiKey',
+        label: 'Google Maps API Key',
+        type: 'password',
+        required: false,
+        helpText: 'Optional — enables enhanced geolocation features',
+      },
+      {
+        key: 'grabMapsApiKey',
+        label: 'GrabMaps API Key',
+        type: 'password',
+        required: false,
+      },
+      {
+        key: 'awsAccessKeyId',
+        label: 'AWS Access Key ID',
+        type: 'text',
+        required: false,
+      },
+      {
+        key: 'awsSecretAccessKey',
+        label: 'AWS Secret Access Key',
+        type: 'password',
+        required: false,
+      },
+      {
+        key: 'awsRegion',
+        label: 'AWS Region',
+        type: 'text',
+        required: false,
+        placeholder: 'ap-southeast-1',
+      },
+    ],
+    servers: ['datagovmy'],
+  },
+  ltadatamallsg: {
+    label: 'Singapore LTA DataMall',
+    fields: [
+      {
+        key: 'apiKey',
+        label: 'LTA DataMall API Key',
+        type: 'password',
+        required: false,
+        helpText: 'Optional — request at datamall.lta.gov.sg',
+      },
+    ],
+    servers: ['ltadatamallsg'],
+  },
 };
 
 // Validate credentials against a connector's field schema

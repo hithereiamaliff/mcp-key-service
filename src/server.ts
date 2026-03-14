@@ -5,6 +5,8 @@ import { KeyDB } from './db.js';
 import { encrypt, decrypt, hashKey, generateApiKey, keyPrefix } from './crypto.js';
 import { CONNECTORS, validateCredentials } from './connectors.js';
 import { RateLimiter } from './rate-limiter.js';
+import { userAuth, requireActiveSubscription, requireKeyOwnership } from './auth-middleware.js';
+import { isFirebaseConfigured } from './firebase-admin.js';
 
 const app = express();
 const db = new KeyDB(config.dataDir);
@@ -30,20 +32,43 @@ app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
     uptime: Math.floor(process.uptime()),
-    version: '1.0.0',
+    version: '2.0.0',
+    firebase: isFirebaseConfigured(),
   });
 });
 
-// --- Registration Page ---
+// --- Registration Page (redirect to portal) ---
 app.get('/register', (_req, res) => {
-  res.type('html').send(getRegistrationHtml());
+  res.redirect('https://mcpkeys.techmavie.digital');
 });
 
-// --- POST /api/register ---
-app.post('/api/register', registerLimiter.middleware(), (req, res) => {
+// --- Connectors info (public, used by portal to render forms) ---
+app.get('/api/connectors', (_req, res) => {
+  const connectors = Object.fromEntries(
+    Object.entries(CONNECTORS).map(([id, c]) => [id, {
+      label: c.label,
+      fields: c.fields,
+      servers: c.servers,
+    }])
+  );
+  res.json({ connectors });
+});
+
+// ─── Public Registration (rate-limited, optionally authenticated) ────
+
+app.post('/api/register', registerLimiter.middleware(), (req, res, next) => {
+  // If Firebase is configured, require auth + subscription
+  if (isFirebaseConfigured()) {
+    userAuth(req, res, () => {
+      requireActiveSubscription(db)(req, res, next);
+    });
+  } else {
+    // Legacy mode: no auth required
+    next();
+  }
+}, (req, res) => {
   const { label, connector_id, credentials } = req.body;
 
-  // Validate inputs
   if (!label || typeof label !== 'string' || label.length > 100) {
     res.status(400).json({ error: 'Label is required (max 100 chars)' });
     return;
@@ -57,20 +82,22 @@ app.post('/api/register', registerLimiter.middleware(), (req, res) => {
     return;
   }
 
-  // Validate credentials against connector schema
   const validation = validateCredentials(connector_id, credentials);
   if (!validation.valid) {
     res.status(400).json({ error: validation.error });
     return;
   }
 
-  // Generate key, encrypt credentials, store
   const apiKey = generateApiKey();
   const hash = hashKey(apiKey);
   const prefix = keyPrefix(apiKey);
   const encrypted = encrypt(JSON.stringify(credentials), config.encryptionSecret);
 
-  db.register(hash, prefix, label.trim(), connector_id, encrypted);
+  if (req.user) {
+    db.registerWithUser(hash, prefix, label.trim(), connector_id, encrypted, req.user.uid);
+  } else {
+    db.register(hash, prefix, label.trim(), connector_id, encrypted);
+  }
   db.logEvent('register', prefix, null, req.ip || null);
 
   const connector = CONNECTORS[connector_id];
@@ -89,8 +116,17 @@ app.post('/api/register', registerLimiter.middleware(), (req, res) => {
   });
 });
 
-// --- POST /api/rotate ---
-app.post('/api/rotate', rotateLimiter.middleware(), (req, res) => {
+// ─── Key Rotation (rate-limited, optionally authenticated) ────
+
+app.post('/api/rotate', rotateLimiter.middleware(), (req, res, next) => {
+  if (isFirebaseConfigured()) {
+    userAuth(req, res, () => {
+      requireKeyOwnership(db)(req, res, next);
+    });
+  } else {
+    next();
+  }
+}, (req, res) => {
   const { current_api_key } = req.body;
 
   if (!current_api_key || typeof current_api_key !== 'string' || !current_api_key.startsWith('usr_')) {
@@ -117,7 +153,8 @@ app.post('/api/rotate', rotateLimiter.middleware(), (req, res) => {
   });
 });
 
-// --- POST /internal/resolve ---
+// ─── Internal Resolve (MCP servers only) ──────────────────────
+
 app.post('/internal/resolve', (req, res) => {
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
@@ -143,11 +180,10 @@ app.post('/internal/resolve', (req, res) => {
   const entry = db.resolve(hash, callerServerId);
 
   if (!entry) {
-    res.status(401).json({ valid: false, error: 'Invalid or revoked API key, or server not authorized' });
+    res.status(401).json({ valid: false, error: 'Invalid, revoked, or suspended API key, or server not authorized' });
     return;
   }
 
-  // Decrypt credentials
   try {
     const plaintext = decrypt(
       {
@@ -173,7 +209,70 @@ app.post('/internal/resolve', (req, res) => {
   }
 });
 
-// --- Admin middleware ---
+// ─── User Routes (authenticated) ─────────────────────────────
+
+// Get user profile (subscription status, key count)
+app.get('/api/user/profile', userAuth, (req, res) => {
+  const user = db.getUser(req.user!.uid);
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+  const keys = db.listKeysByUser(req.user!.uid);
+  res.json({
+    email: user.email,
+    display_name: user.display_name,
+    subscription_status: user.subscription_status,
+    current_period_end: user.current_period_end,
+    is_admin: user.is_admin === 1,
+    key_count: keys.length,
+  });
+});
+
+// List user's own keys
+app.get('/api/user/keys', userAuth, (req, res) => {
+  const keys = db.listKeysByUser(req.user!.uid);
+  res.json({ keys, total: keys.length });
+});
+
+// Revoke user's own key
+app.delete('/api/user/keys/:prefix', userAuth, (req, res) => {
+  const prefix = req.params.prefix;
+  if (!KEY_PREFIX_PATTERN.test(prefix)) {
+    res.status(400).json({ error: 'Invalid key prefix format' });
+    return;
+  }
+
+  const success = db.revokeByUser(prefix, req.user!.uid);
+  if (!success) {
+    res.status(404).json({ error: 'Key not found or already revoked' });
+    return;
+  }
+  db.logEvent('revoke', prefix, null, req.ip || null);
+  res.json({ message: 'Key revoked successfully' });
+});
+
+// Claim a legacy key (no owner) by presenting the full key
+app.post('/api/user/claim-key', userAuth, (req, res) => {
+  const { api_key } = req.body;
+  if (!api_key || typeof api_key !== 'string' || !api_key.startsWith('usr_')) {
+    res.status(400).json({ error: 'api_key is required and must start with usr_' });
+    return;
+  }
+
+  const hash = hashKey(api_key);
+  const success = db.claimKey(hash, req.user!.uid);
+  if (!success) {
+    res.status(404).json({ error: 'Key not found, already owned, or revoked' });
+    return;
+  }
+
+  db.logEvent('claim', keyPrefix(api_key), null, req.ip || null);
+  res.json({ message: 'Key claimed successfully' });
+});
+
+// ─── Admin Routes ─────────────────────────────────────────────
+
 function adminAuth(req: express.Request, res: express.Response, next: express.NextFunction): void {
   const authHeader = req.headers.authorization;
   const headerKey = req.headers['x-admin-key'] as string | undefined;
@@ -186,13 +285,13 @@ function adminAuth(req: express.Request, res: express.Response, next: express.Ne
   next();
 }
 
-// --- GET /admin/keys ---
+// List all keys
 app.get('/admin/keys', adminAuth, (_req, res) => {
   const keys = db.listKeys();
   res.json({ keys, total: keys.length });
 });
 
-// --- DELETE /admin/keys/:prefix ---
+// Revoke any key
 app.delete('/admin/keys/:prefix', adminAuth, (req, res) => {
   const prefix = req.params.prefix;
   if (!KEY_PREFIX_PATTERN.test(prefix)) {
@@ -209,247 +308,84 @@ app.delete('/admin/keys/:prefix', adminAuth, (req, res) => {
   res.json({ message: 'Key revoked successfully' });
 });
 
-// --- GET /admin/stats ---
+// Service stats
 app.get('/admin/stats', adminAuth, (_req, res) => {
   const stats = db.getStats();
   res.json(stats);
 });
 
-// --- 404 handler ---
+// List all users
+app.get('/admin/users', adminAuth, (_req, res) => {
+  const users = db.listUsers();
+  res.json({ users, total: users.length });
+});
+
+// Create or update a user (called by portal on Firebase sync)
+app.post('/admin/users', adminAuth, (req, res) => {
+  const { firebase_uid, email, display_name } = req.body;
+
+  if (!firebase_uid || typeof firebase_uid !== 'string') {
+    res.status(400).json({ error: 'firebase_uid is required' });
+    return;
+  }
+  if (!email || typeof email !== 'string') {
+    res.status(400).json({ error: 'email is required' });
+    return;
+  }
+
+  db.createUser(firebase_uid, email, display_name || null);
+
+  // Seed admin flag if UID is in ADMIN_UIDS
+  if (config.adminUids.includes(firebase_uid)) {
+    db.setUserAdmin(firebase_uid, true);
+  }
+
+  const user = db.getUser(firebase_uid);
+  res.json({ user });
+});
+
+// Update user's Stripe subscription info
+app.put('/admin/users/:uid/subscription', adminAuth, (req, res) => {
+  const { uid } = req.params;
+  const { stripe_customer_id, subscription_status, subscription_id, current_period_end } = req.body;
+
+  if (!stripe_customer_id || !subscription_status) {
+    res.status(400).json({ error: 'stripe_customer_id and subscription_status are required' });
+    return;
+  }
+
+  db.updateUserStripe(uid, stripe_customer_id, subscription_status, subscription_id || null, current_period_end || null);
+  res.json({ message: 'Subscription updated' });
+});
+
+// Suspend all keys for a user
+app.post('/admin/users/:uid/suspend-keys', adminAuth, (req, res) => {
+  const count = db.suspendKeysByUser(req.params.uid);
+  db.logEvent('suspend-keys', null, null, req.ip || null);
+  res.json({ message: `Suspended ${count} key(s)` });
+});
+
+// Reactivate all keys for a user
+app.post('/admin/users/:uid/reactivate-keys', adminAuth, (req, res) => {
+  const count = db.reactivateKeysByUser(req.params.uid);
+  db.logEvent('reactivate-keys', null, null, req.ip || null);
+  res.json({ message: `Reactivated ${count} key(s)` });
+});
+
+// ─── Fallback Handlers ────────────────────────────────────────
+
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// --- Global error handler ---
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// --- Start ---
+// ─── Start ────────────────────────────────────────────────────
+
 app.listen(config.port, config.host, () => {
-  console.log(`MCP Key Service running on ${config.host}:${config.port}`);
-  console.log(`Registration page: http://localhost:${config.port}/register`);
+  console.log(`MCP Key Service v2.0.0 running on ${config.host}:${config.port}`);
+  console.log(`Firebase auth: ${isFirebaseConfigured() ? 'enabled' : 'disabled'}`);
 });
-
-// --- Registration HTML ---
-function getRegistrationHtml(): string {
-  // Build connector options and field configs for the frontend
-  const connectorOptions = Object.entries(CONNECTORS).map(
-    ([id, c]) => `<option value="${id}">${c.label}</option>`
-  ).join('\n');
-
-  const connectorFieldsJson = JSON.stringify(
-    Object.fromEntries(
-      Object.entries(CONNECTORS).map(([id, c]) => [id, c.fields])
-    )
-  );
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MCP Key Service — Register</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0f172a; color: #e2e8f0;
-      min-height: 100vh; display: flex; justify-content: center; align-items: center;
-      padding: 2rem;
-    }
-    .container { max-width: 480px; width: 100%; }
-    .header { text-align: center; margin-bottom: 2rem; }
-    .header h1 { font-size: 1.5rem; color: #f8fafc; margin-bottom: 0.5rem; }
-    .header p { color: #94a3b8; font-size: 0.9rem; }
-    .brand { color: #38bdf8; font-weight: 600; }
-    .card {
-      background: #1e293b; border-radius: 12px; padding: 2rem;
-      border: 1px solid #334155;
-    }
-    label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.4rem; margin-top: 1rem; }
-    label:first-child { margin-top: 0; }
-    input, select {
-      width: 100%; padding: 0.65rem 0.8rem; border-radius: 8px;
-      border: 1px solid #475569; background: #0f172a; color: #e2e8f0;
-      font-size: 0.95rem; outline: none; transition: border-color 0.2s;
-    }
-    input:focus, select:focus { border-color: #38bdf8; }
-    .help-text { font-size: 0.75rem; color: #64748b; margin-top: 0.25rem; }
-    button {
-      width: 100%; padding: 0.75rem; border: none; border-radius: 8px;
-      background: #2563eb; color: #fff; font-size: 1rem; font-weight: 600;
-      cursor: pointer; margin-top: 1.5rem; transition: background 0.2s;
-    }
-    button:hover { background: #1d4ed8; }
-    button:disabled { background: #475569; cursor: not-allowed; }
-    .error { color: #f87171; font-size: 0.85rem; margin-top: 0.5rem; }
-    .result { display: none; }
-    .result.show { display: block; }
-    .key-box {
-      background: #0f172a; border: 1px solid #334155; border-radius: 8px;
-      padding: 1rem; margin: 1rem 0; word-break: break-all;
-      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem;
-      position: relative; color: #34d399;
-    }
-    .copy-btn {
-      position: absolute; top: 0.5rem; right: 0.5rem;
-      background: #334155; border: none; color: #94a3b8; padding: 0.3rem 0.6rem;
-      border-radius: 4px; cursor: pointer; font-size: 0.75rem; width: auto;
-      margin-top: 0;
-    }
-    .copy-btn:hover { background: #475569; }
-    .warning {
-      background: #451a03; border: 1px solid #92400e; border-radius: 8px;
-      padding: 0.75rem 1rem; margin-top: 1rem; font-size: 0.85rem; color: #fbbf24;
-    }
-    .url-box {
-      background: #0f172a; border: 1px solid #334155; border-radius: 8px;
-      padding: 0.75rem 1rem; margin-top: 0.75rem; word-break: break-all;
-      font-family: monospace; font-size: 0.8rem; color: #93c5fd;
-    }
-    #dynamic-fields { min-height: 0; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>MCP Key Registration</h1>
-      <p>Get an API key for <span class="brand">TechMavie</span> MCP servers</p>
-    </div>
-
-    <div class="card" id="form-card">
-      <form id="register-form">
-        <label for="connector">Service Type</label>
-        <select id="connector" name="connector_id" required>
-          <option value="">Select a service...</option>
-          ${connectorOptions}
-        </select>
-
-        <div id="dynamic-fields"></div>
-
-        <label for="label">Label (for your reference)</label>
-        <input type="text" id="label" name="label" placeholder="e.g. My Nextcloud" required maxlength="100">
-
-        <button type="submit" id="submit-btn">Register & Get API Key</button>
-        <div class="error" id="error-msg"></div>
-      </form>
-    </div>
-
-    <div class="card result" id="result-card">
-      <h2 style="font-size:1.1rem; margin-bottom:0.5rem;">Your API Key</h2>
-      <div class="key-box">
-        <span id="api-key-display"></span>
-        <button class="copy-btn" onclick="copyKey()">Copy</button>
-      </div>
-      <p style="font-size:0.85rem; color:#94a3b8; margin-top:0.5rem;">Ready-to-paste MCP URL:</p>
-      <div class="url-box" id="url-display"></div>
-      <div class="warning">
-        Save this key now — it cannot be retrieved later. If lost, you'll need to register again.
-      </div>
-      <button onclick="resetForm()" style="background:#334155; margin-top:1rem;">Register Another Key</button>
-    </div>
-  </div>
-
-  <script>
-    const CONNECTOR_FIELDS = ${connectorFieldsJson};
-
-    const connectorSelect = document.getElementById('connector');
-    const dynamicFields = document.getElementById('dynamic-fields');
-    const form = document.getElementById('register-form');
-    const errorMsg = document.getElementById('error-msg');
-    const formCard = document.getElementById('form-card');
-    const resultCard = document.getElementById('result-card');
-
-    connectorSelect.addEventListener('change', () => {
-      const id = connectorSelect.value;
-      dynamicFields.innerHTML = '';
-      if (!id || !CONNECTOR_FIELDS[id]) return;
-
-      CONNECTOR_FIELDS[id].forEach(field => {
-        const lbl = document.createElement('label');
-        lbl.setAttribute('for', 'cred_' + field.key);
-        lbl.textContent = field.label;
-        dynamicFields.appendChild(lbl);
-
-        const input = document.createElement('input');
-        input.type = field.type === 'password' ? 'password' : 'text';
-        input.id = 'cred_' + field.key;
-        input.name = field.key;
-        input.placeholder = field.placeholder || '';
-        input.required = field.required;
-        dynamicFields.appendChild(input);
-
-        if (field.helpText) {
-          const help = document.createElement('div');
-          help.className = 'help-text';
-          help.textContent = field.helpText;
-          dynamicFields.appendChild(help);
-        }
-      });
-    });
-
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      errorMsg.textContent = '';
-      const btn = document.getElementById('submit-btn');
-      btn.disabled = true;
-      btn.textContent = 'Registering...';
-
-      const connectorId = connectorSelect.value;
-      const label = document.getElementById('label').value;
-      const fields = CONNECTOR_FIELDS[connectorId] || [];
-
-      const credentials = {};
-      for (const field of fields) {
-        credentials[field.key] = document.getElementById('cred_' + field.key)?.value || '';
-      }
-
-      try {
-        const res = await fetch('api/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ label, connector_id: connectorId, credentials }),
-        });
-        const data = await res.json();
-
-        if (!res.ok) {
-          errorMsg.textContent = data.error || 'Registration failed';
-          btn.disabled = false;
-          btn.textContent = 'Register & Get API Key';
-          return;
-        }
-
-        document.getElementById('api-key-display').textContent = data.api_key;
-        document.getElementById('url-display').textContent = data.usage?.url_example || '';
-        formCard.style.display = 'none';
-        resultCard.classList.add('show');
-      } catch (err) {
-        errorMsg.textContent = 'Network error — please try again';
-        btn.disabled = false;
-        btn.textContent = 'Register & Get API Key';
-      }
-    });
-
-    function copyKey() {
-      const key = document.getElementById('api-key-display').textContent;
-      navigator.clipboard.writeText(key).then(() => {
-        const btn = document.querySelector('.copy-btn');
-        btn.textContent = 'Copied!';
-        setTimeout(() => btn.textContent = 'Copy', 2000);
-      });
-    }
-
-    function resetForm() {
-      formCard.style.display = 'block';
-      resultCard.classList.remove('show');
-      form.reset();
-      dynamicFields.innerHTML = '';
-      document.getElementById('submit-btn').disabled = false;
-      document.getElementById('submit-btn').textContent = 'Register & Get API Key';
-    }
-  </script>
-</body>
-</html>`;
-}

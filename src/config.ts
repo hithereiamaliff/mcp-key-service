@@ -76,6 +76,14 @@ const adminApiKey = requireEnv('ADMIN_API_KEY');
 const encryptionSecret = parseEncryptionSecret(requireEnv('KEY_ENCRYPTION_SECRET'));
 const internalServerTokens = parseInternalServerTokens(requireEnv('INTERNAL_SERVER_TOKENS'));
 
+// Firebase Admin SDK (optional — user auth disabled if not set)
+const firebaseAdminProjectId = process.env.FIREBASE_ADMIN_PROJECT_ID || '';
+const firebaseAdminClientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL || '';
+const firebaseAdminPrivateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY || '';
+
+// Admin UIDs: comma-separated Firebase UIDs that get is_admin=1 on first sync
+const adminUids = (process.env.ADMIN_UIDS || '').split(',').map(s => s.trim()).filter(Boolean);
+
 export const config = {
   port: parseInt(process.env.PORT || '8090', 10),
   host: process.env.HOST || '0.0.0.0',
@@ -84,4 +92,8 @@ export const config = {
   encryptionSecret,
   internalServerTokens,
   trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
+  firebaseAdminProjectId,
+  firebaseAdminClientEmail,
+  firebaseAdminPrivateKey,
+  adminUids,
 };

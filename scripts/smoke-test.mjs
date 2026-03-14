@@ -82,9 +82,9 @@ async function run() {
   await fs.rm(dataDir, { recursive: true, force: true });
   await waitForHealth();
 
-  const registerPage = await request('/register');
-  assert.equal(registerPage.status, 200);
-  assert.match(registerPage.body, /fetch\('api\/register'/);
+  const registerPage = await request('/register', { redirect: 'manual' });
+  assert.equal(registerPage.status, 302);
+  assert.equal(registerPage.headers.get('location'), 'https://mcpkeys.techmavie.digital');
 
   const firstRegister = await request('/api/register', {
     method: 'POST',
