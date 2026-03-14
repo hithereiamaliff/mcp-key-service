@@ -351,17 +351,64 @@ Stored records include:
 
 Raw API keys are never stored after registration.
 
-## Security Notes
+## Security Architecture
 
-- Credentials encrypted with AES-256-GCM using a random IV per record
-- API keys hashed with SHA-256 before storage
-- Internal access scoped to authenticated MCP servers via per-server tokens
-- Connector access enforced — servers can only resolve credentials for their allowed connectors
-- Admin revocation is exact-match only
-- Public registration and rotation are rate-limited
-- `trust proxy` off by default to avoid spoofed client IPs
-- Stripe webhook events filtered by price ID to prevent cross-product interference
-- Firebase authentication required for all user-facing operations
+### Credential Storage
+
+User credentials are never stored in plaintext. The service uses a **split-secret** design:
+
+| Layer | What's Stored | Where |
+|-------|--------------|-------|
+| API key | SHA-256 hash only | SQLite `key_hash` column |
+| Credentials | AES-256-GCM ciphertext | SQLite `credentials_encrypted` column |
+| Encryption key | `KEY_ENCRYPTION_SECRET` | `.env` file on VPS (never in database) |
+| IV + auth tag | Unique random 12-byte IV per record | SQLite `credentials_iv` and `credentials_tag` columns |
+
+**To decrypt any credential, an attacker would need both:**
+1. The SQLite database file (on the VPS filesystem / Docker volume)
+2. The `KEY_ENCRYPTION_SECRET` from the `.env` file
+
+Neither alone is useful — the encrypted data without the key is indecipherable, and the key without the database decrypts nothing.
+
+### API Key Handling
+
+- Raw API keys (`usr_...`) are generated once, shown to the user, and **never stored**
+- Only the SHA-256 hash is kept for lookup during `/internal/resolve` calls
+- Even with full database access, API keys cannot be reversed from their hashes
+
+### Encryption Details
+
+- **Algorithm:** AES-256-GCM (authenticated encryption — same standard used by banks and government systems)
+- **Key size:** 256-bit (64 hex characters)
+- **IV:** Unique random 12-byte IV generated per record (prevents pattern analysis across entries)
+- **Auth tag:** GCM authentication tag stored per record (detects tampering)
+
+### Network Security
+
+- Docker ports bound to `127.0.0.1` only — backend and portal are not directly exposed to the internet
+- nginx reverse proxy blocks external access to `/internal/` routes
+- `/internal/resolve` requires per-server bearer tokens — each MCP server has its own token
+- Connector access is enforced: a server can only resolve credentials for its allowed connectors
+- `TRUST_PROXY` defaults to `0` to prevent spoofed client IPs
+
+### Application Security
+
+- Firebase Authentication required for all user-facing operations
+- Stripe webhook events filtered by `STRIPE_PRICE_ID` to prevent cross-product interference
+- Admin endpoints require a separate `ADMIN_API_KEY`
+- Public registration and rotation endpoints are rate-limited per IP
+- Admin key revocation uses exact-match only (no partial prefix matching)
+
+### Operational Recommendations
+
+If you're self-hosting this service:
+
+- **SSH access:** Use key-based authentication only, disable password login
+- **`.env` file permissions:** Restrict to owner-only (`chmod 600 .env`)
+- **Firewall:** Only expose ports 80/443 (nginx) — all service ports should be localhost-only
+- **Updates:** Keep Docker, Node.js, and OS packages updated for security patches
+- **Backups:** Back up the Docker volume (`key-data`) and `.env` separately — both are needed to restore
+- **Token rotation:** Generate strong random tokens (`openssl rand -hex 32`) for all secrets
 
 ## Verification
 
