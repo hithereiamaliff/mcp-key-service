@@ -45,8 +45,11 @@ jobs:
             docker network inspect mcp-network >/dev/null 2>&1 || \
               docker network create mcp-network
 
+            # Stop and remove existing containers (handles orphans from previous compose contexts)
+            docker compose down --remove-orphans 2>/dev/null || true
+            docker rm -f mcp-key-service mcp-key-portal 2>/dev/null || true
+
             # Build and deploy
-            docker compose down
             docker compose build --no-cache
             docker compose up -d
 
