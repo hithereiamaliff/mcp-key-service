@@ -49,11 +49,20 @@ export async function POST(req: NextRequest) {
   }
   markProcessed(event.id);
 
+  const priceId = process.env.STRIPE_PRICE_ID;
+
   try {
     switch (event.type) {
       case 'customer.subscription.created':
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription;
+
+        // Only process subscriptions for our price — ignore Ghost/other products
+        if (priceId && !subscriptionMatchesPrice(subscription, priceId)) {
+          console.log(`Ignoring ${event.type}: subscription ${subscription.id} does not match our price`);
+          break;
+        }
+
         const customerId = subscription.customer as string;
         const uid = await findUidByCustomer(customerId, subscription);
 
@@ -75,6 +84,12 @@ export async function POST(req: NextRequest) {
 
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
+
+        if (priceId && !subscriptionMatchesPrice(subscription, priceId)) {
+          console.log(`Ignoring ${event.type}: subscription ${subscription.id} does not match our price`);
+          break;
+        }
+
         const customerId = subscription.customer as string;
         const uid = await findUidByCustomer(customerId, subscription);
 
@@ -93,6 +108,12 @@ export async function POST(req: NextRequest) {
 
       case 'invoice.payment_failed': {
         const invoice = event.data.object as Stripe.Invoice;
+
+        if (priceId && !invoiceMatchesPrice(invoice, priceId)) {
+          console.log(`Ignoring ${event.type}: invoice ${invoice.id} does not match our price`);
+          break;
+        }
+
         const customerId = invoice.customer as string;
         const uid = await findUidByCustomer(customerId);
 
@@ -109,6 +130,12 @@ export async function POST(req: NextRequest) {
 
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice;
+
+        if (priceId && !invoiceMatchesPrice(invoice, priceId)) {
+          console.log(`Ignoring ${event.type}: invoice ${invoice.id} does not match our price`);
+          break;
+        }
+
         const customerId = invoice.customer as string;
         const uid = await findUidByCustomer(customerId);
 
@@ -145,4 +172,18 @@ async function findUidByCustomer(
     (u: { stripe_customer_id: string | null }) => u.stripe_customer_id === customerId
   );
   return user?.firebase_uid || null;
+}
+
+// Check if a subscription contains a line item matching our price ID
+function subscriptionMatchesPrice(subscription: Stripe.Subscription, priceId: string): boolean {
+  const items = subscription.items?.data;
+  if (!items) return false;
+  return items.some(item => item.price?.id === priceId);
+}
+
+// Check if an invoice contains a line item matching our price ID
+function invoiceMatchesPrice(invoice: Stripe.Invoice, priceId: string): boolean {
+  const lines = invoice.lines?.data;
+  if (!lines) return false;
+  return lines.some(line => line.price?.id === priceId);
 }
