@@ -1,6 +1,6 @@
 # MCP Key Service
 
-Shared API key management service for [TechMavie MCP servers](https://mcp.techmavie.digital). Users subscribe through the portal, store their MCP server credentials securely, and receive a single `usr_...` API key per connection. MCP servers resolve these keys at runtime to retrieve decrypted credentials.
+Shared API key management service for [TechMavie MCP servers](https://techmavie.digital/modelcontextprotocol). Users subscribe through the portal, store their MCP server credentials securely, and receive a single `usr_...` API key per connection. MCP servers resolve these keys at runtime to retrieve decrypted credentials.
 
 **Live portal:** [mcpkeys.techmavie.digital](https://mcpkeys.techmavie.digital)
 
