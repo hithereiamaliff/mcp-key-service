@@ -423,3 +423,11 @@ The smoke test in `scripts/smoke-test.mjs` verifies:
 - Exact-prefix revoke behavior
 - Protection against spoofed internal caller identity
 - Protection against rate-limit bypass when `TRUST_PROXY=0`
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
+## Created By
+
+[TechMavie Digital](https://techmavie.digital/) — AI integration, MCP server development, and transit data middleware.
