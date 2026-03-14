@@ -84,6 +84,8 @@ MCP Server uses credentials to call the actual service (Nextcloud, GitHub, etc.)
 4. The backend encrypts the credentials and returns a `usr_...` API key.
 5. User configures their MCP client URL: `https://mcp.techmavie.digital/{server}/mcp?api_key=usr_...`
 6. When the MCP server receives a request, it calls `/internal/resolve` with its own bearer token.
+   When the MCP server can reach the Docker network directly, use `http://mcp-key-service:8090/internal/resolve`.
+   For external callers, use `https://mcpkeys.techmavie.digital/internal/resolve`, which proxies to the backend service.
 7. The backend verifies the server's identity, decrypts credentials, and returns them.
 
 For detailed integration instructions, see [docs/mcp-server-integration.md](docs/mcp-server-integration.md).
@@ -220,6 +222,8 @@ Rotates an existing `usr_...` key, revoking the old one.
 #### `POST /internal/resolve`
 
 Called by MCP servers only. Each server authenticates with its own bearer token.
+The backend route lives at `http://mcp-key-service:8090/internal/resolve` inside Docker.
+The public portal also exposes `https://mcpkeys.techmavie.digital/internal/resolve` as a thin proxy to that backend route.
 
 ```http
 Authorization: Bearer <server-specific-token>
@@ -311,22 +315,9 @@ server {
     }
 }
 
-# Backend API (internal, or exposed under a subpath)
-location /keys/ {
-    rewrite ^/keys/(.*) /$1 break;
-    proxy_pass http://127.0.0.1:8090;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
-
-# Block external access to internal endpoints
-location /keys/internal/ {
-    deny all;
-    return 403;
-}
+# Backend stays on localhost only.
+# The public /internal/resolve endpoint is served by the Next.js portal
+# and proxied onward to the backend container.
 ```
 
 Set `TRUST_PROXY=1` when running behind nginx.
@@ -386,7 +377,7 @@ Neither alone is useful — the encrypted data without the key is indecipherable
 ### Network Security
 
 - Docker ports bound to `127.0.0.1` only — backend and portal are not directly exposed to the internet
-- nginx reverse proxy blocks external access to `/internal/` routes
+- The backend stays on localhost-only ports; external MCP servers should use the portal proxy at `https://mcpkeys.techmavie.digital/internal/resolve`
 - `/internal/resolve` requires per-server bearer tokens — each MCP server has its own token
 - Connector access is enforced: a server can only resolve credentials for its allowed connectors
 - `TRUST_PROXY` defaults to `0` to prevent spoofed client IPs
