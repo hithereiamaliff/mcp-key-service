@@ -59,7 +59,7 @@ export default function SubscriptionCard({ status, periodEnd, previewMode = fals
           className="inline-block w-2 h-2 rounded-full"
           style={{ backgroundColor: statusColor }}
         />
-        <span className="text-sm capitalize">{status === 'none' ? 'No subscription' : status}</span>
+        <span className="text-sm capitalize">{status === 'none' ? 'Free plan' : status}</span>
         {periodEnd && isActive && (
           <span className="text-xs text-[var(--text-secondary)] ml-2">
             Renews {new Date(periodEnd).toLocaleDateString()}
@@ -70,7 +70,7 @@ export default function SubscriptionCard({ status, periodEnd, previewMode = fals
       {!isActive ? (
         <div>
           <p className="text-sm text-[var(--text-secondary)] mb-3">
-            Subscribe to store your MCP server credentials securely.
+            Your first connection is free. Subscribe for unlimited connections.
           </p>
           <p className="text-2xl font-bold mb-4">RM49<span className="text-sm font-normal">/month</span></p>
           <button

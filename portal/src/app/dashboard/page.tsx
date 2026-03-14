@@ -43,6 +43,7 @@ export default function DashboardPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [keys, setKeys] = useState<KeyMeta[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [newKey, setNewKey] = useState<NewKey | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
   const [linkingProvider, setLinkingProvider] = useState<'google' | 'github' | null>(null);
@@ -163,6 +164,23 @@ export default function DashboardPage() {
   if (!user && !previewMode) return null;
 
   const isSubscribed = profile?.subscription_status === 'active';
+  const usableKeyCount = keys.filter(key => key.status !== 'suspended').length;
+  const canAddConnection = isSubscribed || usableKeyCount === 0;
+
+  async function handleUpgrade() {
+    if (previewMode) return;
+    try {
+      const token = await getIdToken();
+      const res = await fetch('/api/stripe/create-checkout', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } catch (err) {
+      console.error('Checkout error:', err);
+    }
+  }
 
   return (
     <>
@@ -188,8 +206,8 @@ export default function DashboardPage() {
           />
           <div className="rounded-lg border border-[var(--border)] p-6 bg-[var(--card)]">
             <h3 className="font-semibold mb-2">Connections</h3>
-            <p className="text-3xl font-bold">{keys.length}</p>
-            <p className="text-sm text-[var(--text-secondary)]">active connection{keys.length !== 1 ? 's' : ''}</p>
+            <p className="text-3xl font-bold">{usableKeyCount}</p>
+            <p className="text-sm text-[var(--text-secondary)]">active connection{usableKeyCount !== 1 ? 's' : ''}</p>
           </div>
         </div>
 
@@ -273,16 +291,21 @@ export default function DashboardPage() {
         )}
 
         {/* Add Connection */}
-        {isSubscribed && (
+        {canAddConnection && (
           <div className="mb-8">
             {!showForm ? (
-              <button
-                onClick={() => setShowForm(true)}
-                className="py-2 px-4 rounded-lg font-medium text-white hover:brightness-110 hover:shadow-md active:scale-[0.98] transition-all duration-200 cursor-pointer"
-                style={{ backgroundColor: 'var(--primary)' }}
-              >
-                + Add Connection
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowForm(true)}
+                  className="py-2 px-4 rounded-lg font-medium text-white hover:brightness-110 hover:shadow-md active:scale-[0.98] transition-all duration-200 cursor-pointer"
+                  style={{ backgroundColor: 'var(--primary)' }}
+                >
+                  + Add Connection
+                </button>
+                {!isSubscribed && keys.length === 0 && (
+                  <span className="text-xs text-[var(--text-secondary)]">1 free connection included</span>
+                )}
+              </div>
             ) : (
               <div className="rounded-lg border border-[var(--border)] p-6 bg-[var(--card)]">
                 <div className="flex items-center justify-between mb-4">
@@ -300,9 +323,27 @@ export default function DashboardPage() {
                     setNewKey(result);
                     setShowForm(false);
                   }}
+                  onSubscriptionRequired={() => {
+                    setShowForm(false);
+                    setShowUpgradeModal(true);
+                    void fetchData();
+                  }}
                 />
               </div>
             )}
+          </div>
+        )}
+
+        {/* Upgrade prompt for free users who have used their free connection */}
+        {!isSubscribed && usableKeyCount > 0 && (
+          <div className="mb-8">
+            <button
+              onClick={() => setShowUpgradeModal(true)}
+              className="py-2 px-4 rounded-lg font-medium text-white hover:brightness-110 hover:shadow-md active:scale-[0.98] transition-all duration-200 cursor-pointer"
+              style={{ backgroundColor: 'var(--primary)' }}
+            >
+              + Add Connection
+            </button>
           </div>
         )}
 
@@ -323,9 +364,9 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {keys.length === 0 && isSubscribed && !showForm && (
+        {keys.length === 0 && !showForm && (
           <p className="text-center text-[var(--text-secondary)] py-8">
-            No connections yet. Click &quot;Add Connection&quot; to get started.
+            No connections yet. Click &quot;Add Connection&quot; to get started — your first one is free.
           </p>
         )}
 
@@ -334,6 +375,37 @@ export default function DashboardPage() {
             Preview mode is active. Configure `NEXT_PUBLIC_FIREBASE_*` values in `portal/.env.local`
             to enable real sign-in and live data.
           </p>
+        )}
+
+        {/* Upgrade Modal */}
+        {showUpgradeModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowUpgradeModal(false)}>
+            <div
+              className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-8 max-w-md w-full mx-4 shadow-xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <h2 className="text-xl font-bold mb-2">Upgrade to add more connections</h2>
+              <p className="text-[var(--text-secondary)] mb-6">
+                Your free plan includes 1 connection. Subscribe to create unlimited MCP connections.
+              </p>
+              <p className="text-2xl font-bold mb-6">RM49<span className="text-sm font-normal">/month</span></p>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleUpgrade}
+                  className="flex-1 py-2 px-4 rounded-lg font-medium text-white hover:brightness-110 hover:shadow-md active:scale-[0.98] transition-all duration-200 cursor-pointer"
+                  style={{ backgroundColor: 'var(--primary)' }}
+                >
+                  Subscribe Now
+                </button>
+                <button
+                  onClick={() => setShowUpgradeModal(false)}
+                  className="flex-1 py-2 px-4 rounded-lg font-medium border border-[var(--border)] hover:bg-[var(--bg-secondary)] transition-all duration-200 cursor-pointer"
+                >
+                  Maybe Later
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </main>
     </>

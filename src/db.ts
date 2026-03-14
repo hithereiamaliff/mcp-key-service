@@ -243,6 +243,14 @@ export class KeyDB {
     ).all(userId) as KeyMetadata[];
   }
 
+  // Count keys that are still usable by the user
+  countUsableKeysByUser(userId: string): number {
+    const row = this.db.prepare(
+      "SELECT COUNT(*) as count FROM keys WHERE user_id = ? AND revoked = 0 AND (status = 'active' OR status IS NULL)"
+    ).get(userId) as { count: number };
+    return row.count;
+  }
+
   // Revoke a key by exact prefix match
   revoke(prefix: string): boolean {
     const result = this.db.prepare(

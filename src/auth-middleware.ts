@@ -43,7 +43,11 @@ export function userAuth(req: Request, res: Response, next: NextFunction): void 
   });
 }
 
-// Check that the authenticated user has an active subscription
+// Maximum number of free connections allowed without a subscription
+const FREE_CONNECTION_LIMIT = 1;
+
+// Check that the authenticated user has an active subscription,
+// or is within the free connection limit
 export function requireActiveSubscription(db: KeyDB) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
@@ -57,12 +61,25 @@ export function requireActiveSubscription(db: KeyDB) {
       return;
     }
 
-    if (user.subscription_status !== 'active') {
-      res.status(403).json({ error: 'Active subscription required. Subscribe at mcpkeys.techmavie.digital' });
+    // Active subscribers can always create connections
+    if (user.subscription_status === 'active') {
+      next();
       return;
     }
 
-    next();
+    // Free tier: allow up to FREE_CONNECTION_LIMIT usable connections without subscription
+    const usableKeyCount = db.countUsableKeysByUser(req.user.uid);
+    if (usableKeyCount < FREE_CONNECTION_LIMIT) {
+      next();
+      return;
+    }
+
+    res.status(403).json({
+      error: 'Free plan allows 1 connection. Subscribe to add more.',
+      code: 'SUBSCRIPTION_REQUIRED',
+      free_limit: FREE_CONNECTION_LIMIT,
+      current_count: usableKeyCount,
+    });
   };
 }
 

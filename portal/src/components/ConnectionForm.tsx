@@ -21,9 +21,10 @@ interface Connector {
 interface Props {
   previewMode?: boolean;
   onCreated: (result: { api_key: string; label: string; connector_id: string; usage: { url_example: string; supported_servers: string[] } }) => void;
+  onSubscriptionRequired?: () => void;
 }
 
-export default function ConnectionForm({ onCreated, previewMode = false }: Props) {
+export default function ConnectionForm({ onCreated, onSubscriptionRequired, previewMode = false }: Props) {
   const [connectors, setConnectors] = useState<Record<string, Connector>>({});
   const [selectedConnector, setSelectedConnector] = useState('');
   const [label, setLabel] = useState('');
@@ -86,6 +87,10 @@ export default function ConnectionForm({ onCreated, previewMode = false }: Props
 
       const data = await res.json();
       if (!res.ok) {
+        if (data.code === 'SUBSCRIPTION_REQUIRED') {
+          onSubscriptionRequired?.();
+          return;
+        }
         setError(data.error || 'Registration failed');
         return;
       }
