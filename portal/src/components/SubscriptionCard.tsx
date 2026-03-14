@@ -76,7 +76,7 @@ export default function SubscriptionCard({ status, periodEnd, previewMode = fals
           <button
             onClick={handleSubscribe}
             disabled={loading || previewMode}
-            className="w-full py-2 px-4 rounded-lg font-medium text-white disabled:opacity-50"
+            className="w-full py-2 px-4 rounded-lg font-medium text-white disabled:opacity-50 hover:brightness-110 hover:shadow-md active:scale-[0.98] transition-all duration-200 cursor-pointer"
             style={{ backgroundColor: 'var(--primary)' }}
           >
             {previewMode ? 'Preview Only' : loading ? 'Loading...' : 'Subscribe Now'}

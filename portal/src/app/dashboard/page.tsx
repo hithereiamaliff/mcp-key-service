@@ -2,12 +2,13 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { onAuthChange, getIdToken, isFirebaseClientConfigured } from '@/lib/firebase';
+import { onAuthChange, getIdToken, isFirebaseClientConfigured, linkGoogle, linkGitHub, unlinkProvider, getFirebaseAuth } from '@/lib/firebase';
 import Navbar from '@/components/Navbar';
 import SubscriptionCard from '@/components/SubscriptionCard';
 import ConnectionForm from '@/components/ConnectionForm';
 import ConnectionCard from '@/components/ConnectionCard';
 import KeyDisplay from '@/components/KeyDisplay';
+import LinkedAccounts from '@/components/LinkedAccounts';
 import type { User } from 'firebase/auth';
 
 interface Profile {
@@ -44,6 +45,8 @@ export default function DashboardPage() {
   const [showForm, setShowForm] = useState(false);
   const [newKey, setNewKey] = useState<NewKey | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
+  const [linkingProvider, setLinkingProvider] = useState<'google' | 'github' | null>(null);
+  const [linkError, setLinkError] = useState<string | null>(null);
   const router = useRouter();
   const firebaseConfigured = isFirebaseClientConfigured();
   const previewAvailable = process.env.NODE_ENV === 'development' && !firebaseConfigured;
@@ -190,6 +193,69 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Linked Accounts */}
+        {user && !previewMode && (
+          <LinkedAccounts
+            user={user}
+            linkingProvider={linkingProvider}
+            linkError={linkError}
+            onLinkGoogle={async () => {
+              setLinkingProvider('google');
+              setLinkError(null);
+              try {
+                await linkGoogle(user);
+                const auth = getFirebaseAuth();
+                await auth?.currentUser?.reload();
+                setUser(auth?.currentUser ?? null);
+              } catch (err: unknown) {
+                const e = err as { code?: string; message?: string };
+                if (e.code === 'auth/credential-already-in-use') {
+                  setLinkError('This Google account is already linked to another user.');
+                } else if (e.code !== 'auth/popup-closed-by-user') {
+                  setLinkError(e.message || 'Failed to link Google account');
+                }
+              } finally {
+                setLinkingProvider(null);
+              }
+            }}
+            onLinkGitHub={async () => {
+              setLinkingProvider('github');
+              setLinkError(null);
+              try {
+                await linkGitHub(user);
+                const auth = getFirebaseAuth();
+                await auth?.currentUser?.reload();
+                setUser(auth?.currentUser ?? null);
+              } catch (err: unknown) {
+                const e = err as { code?: string; message?: string };
+                if (e.code === 'auth/credential-already-in-use') {
+                  setLinkError('This GitHub account is already linked to another user.');
+                } else if (e.code !== 'auth/popup-closed-by-user') {
+                  setLinkError(e.message || 'Failed to link GitHub account');
+                }
+              } finally {
+                setLinkingProvider(null);
+              }
+            }}
+            onUnlink={async (providerId: string) => {
+              if (user.providerData.length <= 1) {
+                setLinkError('You must have at least one sign-in method linked.');
+                return;
+              }
+              setLinkError(null);
+              try {
+                await unlinkProvider(user, providerId);
+                const auth = getFirebaseAuth();
+                await auth?.currentUser?.reload();
+                setUser(auth?.currentUser ?? null);
+              } catch (err: unknown) {
+                const e = err as { message?: string };
+                setLinkError(e.message || 'Failed to unlink account');
+              }
+            }}
+          />
+        )}
+
         {/* New Key Display */}
         {newKey && (
           <div className="mb-8">
@@ -212,7 +278,7 @@ export default function DashboardPage() {
             {!showForm ? (
               <button
                 onClick={() => setShowForm(true)}
-                className="py-2 px-4 rounded-lg font-medium text-white"
+                className="py-2 px-4 rounded-lg font-medium text-white hover:brightness-110 hover:shadow-md active:scale-[0.98] transition-all duration-200 cursor-pointer"
                 style={{ backgroundColor: 'var(--primary)' }}
               >
                 + Add Connection

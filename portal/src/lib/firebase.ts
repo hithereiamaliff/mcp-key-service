@@ -2,6 +2,8 @@ import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import {
   getAuth,
   signInWithPopup,
+  linkWithPopup,
+  unlink,
   GoogleAuthProvider,
   GithubAuthProvider,
   signOut as firebaseSignOut,
@@ -108,6 +110,21 @@ export function onAuthChange(callback: (user: User | null) => void) {
     return () => {};
   }
   return onAuthStateChanged(a, callback);
+}
+
+const googleProvider = new GoogleAuthProvider();
+const githubProvider = new GithubAuthProvider();
+
+export async function linkGoogle(user: User) {
+  return linkWithPopup(user, googleProvider);
+}
+
+export async function linkGitHub(user: User) {
+  return linkWithPopup(user, githubProvider);
+}
+
+export async function unlinkProvider(user: User, providerId: string) {
+  return unlink(user, providerId);
 }
 
 export async function getIdToken(): Promise<string | null> {
