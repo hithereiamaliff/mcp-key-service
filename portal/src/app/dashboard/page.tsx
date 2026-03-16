@@ -10,6 +10,8 @@ import ConnectionCard from '@/components/ConnectionCard';
 import KeyDisplay from '@/components/KeyDisplay';
 import LinkedAccounts from '@/components/LinkedAccounts';
 import PriceDisplay from '@/components/PriceDisplay';
+import CurrencySelector from '@/components/CurrencySelector';
+import RatesAttribution from '@/components/RatesAttribution';
 import type { User } from 'firebase/auth';
 
 interface Profile {
@@ -389,9 +391,13 @@ export default function DashboardPage() {
               <p className="text-[var(--text-secondary)] mb-6">
                 Your free plan includes 1 connection. Subscribe to create unlimited MCP connections.
               </p>
-              <p className="text-2xl font-bold mb-2"><PriceDisplay amountMYR={49} /></p>
-              <p className="text-xs text-[var(--text-secondary)] mb-6">
-                Local currency is an estimate. Stripe checkout bills RM49/month.
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-2xl font-bold"><PriceDisplay amountMYR={49} /></p>
+                <CurrencySelector />
+              </div>
+              <RatesAttribution className="mb-2" />
+              <p className="text-xs text-[var(--text-secondary)] italic mb-6">
+                All subscription charges are in Malaysian Ringgit (RM). Currency conversions are estimates only.
               </p>
               <div className="flex gap-3">
                 <button

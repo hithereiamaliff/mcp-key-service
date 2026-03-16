@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { getIdToken } from '@/lib/firebase';
 import PriceDisplay from './PriceDisplay';
+import CurrencySelector from './CurrencySelector';
+import RatesAttribution from './RatesAttribution';
 
 interface Props {
   status: string;
@@ -73,9 +75,13 @@ export default function SubscriptionCard({ status, periodEnd, previewMode = fals
           <p className="text-sm text-[var(--text-secondary)] mb-3">
             Your first connection is free. Subscribe for unlimited connections.
           </p>
-          <p className="text-2xl font-bold mb-4"><PriceDisplay amountMYR={49} /></p>
-          <p className="text-xs text-[var(--text-secondary)] mb-4">
-            Local currency is an estimate. Stripe checkout bills RM49/month.
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-2xl font-bold"><PriceDisplay amountMYR={49} /></p>
+            <CurrencySelector />
+          </div>
+          <RatesAttribution className="mb-2" />
+          <p className="text-xs text-[var(--text-secondary)] italic mb-4">
+            All subscription charges are in Malaysian Ringgit (RM). Currency conversions are estimates only.
           </p>
           <button
             onClick={handleSubscribe}

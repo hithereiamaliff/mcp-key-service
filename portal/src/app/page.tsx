@@ -11,6 +11,8 @@ import {
 } from '@/lib/firebase';
 import Navbar from '@/components/Navbar';
 import PriceDisplay from '@/components/PriceDisplay';
+import CurrencySelector from '@/components/CurrencySelector';
+import RatesAttribution from '@/components/RatesAttribution';
 import type { User } from 'firebase/auth';
 
 export default function LandingPage() {
@@ -183,10 +185,14 @@ export default function LandingPage() {
           </div>
           <div className="rounded-xl border-2 border-[var(--primary)] p-6 bg-[var(--card)] relative">
             <h3 className="font-semibold text-lg mb-2">Pro</h3>
-            <p className="text-3xl font-bold mb-1"><PriceDisplay amountMYR={49} suffix="" /></p>
-            <p className="text-sm text-[var(--text-secondary)] mb-4">per month</p>
-            <p className="text-xs text-[var(--text-secondary)] mb-4">
-              Local currency is an estimate. Stripe checkout bills RM49/month.
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-3xl font-bold"><PriceDisplay amountMYR={49} suffix="" /></p>
+              <CurrencySelector />
+            </div>
+            <p className="text-sm text-[var(--text-secondary)] mb-2">per month</p>
+            <RatesAttribution className="mb-4" />
+            <p className="text-xs text-[var(--text-secondary)] italic mb-4">
+              All subscription charges are in Malaysian Ringgit (RM). Currency conversions are estimates only.
             </p>
             <ul className="text-sm space-y-2 text-[var(--text-secondary)]">
               <li>Unlimited MCP connections</li>
