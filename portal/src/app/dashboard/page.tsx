@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { onAuthChange, getIdToken, isFirebaseClientConfigured, linkGoogle, linkGitHub, unlinkProvider, getFirebaseAuth } from '@/lib/firebase';
 import Navbar from '@/components/Navbar';
@@ -48,9 +48,11 @@ export default function DashboardPage() {
   const [showForm, setShowForm] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [newKey, setNewKey] = useState<NewKey | null>(null);
+  const [hasCreatedConnection, setHasCreatedConnection] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
   const [linkingProvider, setLinkingProvider] = useState<'google' | 'github' | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const fetchRequestIdRef = useRef(0);
   const router = useRouter();
   const firebaseConfigured = isFirebaseClientConfigured();
   const previewAvailable = process.env.NODE_ENV === 'development' && !firebaseConfigured;
@@ -65,16 +67,10 @@ export default function DashboardPage() {
   }, [previewAvailable]);
 
   const fetchData = useCallback(async () => {
+    const requestId = ++fetchRequestIdRef.current;
+
     if (previewMode) {
-      setProfile({
-        email: 'preview@techmavie.digital',
-        display_name: 'Preview User',
-        subscription_status: 'active',
-        current_period_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-        is_admin: true,
-        key_count: 2,
-      });
-      setKeys([
+      const previewKeys: KeyMeta[] = [
         {
           key_prefix: 'usr_preview01...a1b2',
           label: 'Main Nextcloud',
@@ -93,13 +89,26 @@ export default function DashboardPage() {
           usage_count: 8,
           status: 'active',
         },
-      ]);
+      ];
+
+      if (requestId !== fetchRequestIdRef.current) return;
+
+      setProfile({
+        email: 'preview@techmavie.digital',
+        display_name: 'Preview User',
+        subscription_status: 'active',
+        current_period_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+        is_admin: true,
+        key_count: 2,
+      });
+      setKeys(previewKeys);
+      setHasCreatedConnection(false);
       setLoading(false);
       return;
     }
 
     const token = await getIdToken();
-    if (!token) return;
+    if (!token || requestId !== fetchRequestIdRef.current) return;
 
     try {
       const syncRes = await fetch('/api/user/sync', {
@@ -111,8 +120,11 @@ export default function DashboardPage() {
         body: JSON.stringify({ display_name: user?.displayName }),
       });
 
+      if (requestId !== fetchRequestIdRef.current) return;
+
       if (syncRes.ok) {
         const { user: userData } = await syncRes.json();
+        if (requestId !== fetchRequestIdRef.current) return;
         if (userData) {
           setProfile({
             email: userData.email,
@@ -129,12 +141,25 @@ export default function DashboardPage() {
         headers: { 'Authorization': `Bearer ${token}` },
       });
 
+      if (requestId !== fetchRequestIdRef.current) return;
+
       if (keysRes.ok) {
         const data = await keysRes.json();
-        setKeys(data.keys || []);
+        if (requestId !== fetchRequestIdRef.current) return;
+
+        const nextKeys = data.keys || [];
+        const nextUsableKeyCount = nextKeys.filter((key: KeyMeta) => key.status !== 'suspended').length;
+        setKeys(nextKeys);
+
+        // Keep the optimistic lock until fresh data confirms the new connection exists.
+        if (nextUsableKeyCount > 0) {
+          setHasCreatedConnection(false);
+        }
       }
     } catch (err) {
-      console.error('Failed to refresh dashboard data:', err);
+      if (requestId === fetchRequestIdRef.current) {
+        console.error('Failed to refresh dashboard data:', err);
+      }
     }
   }, [previewMode, user]);
 
@@ -168,7 +193,8 @@ export default function DashboardPage() {
 
   const isSubscribed = profile?.subscription_status === 'active';
   const usableKeyCount = keys.filter(key => key.status !== 'suspended').length;
-  const canAddConnection = isSubscribed || usableKeyCount === 0;
+  const effectiveUsableKeyCount = hasCreatedConnection ? Math.max(usableKeyCount, 1) : usableKeyCount;
+  const canAddConnection = isSubscribed || effectiveUsableKeyCount === 0;
 
   async function handleUpgrade() {
     if (previewMode) return;
@@ -209,8 +235,8 @@ export default function DashboardPage() {
           />
           <div className="rounded-lg border border-[var(--border)] p-6 bg-[var(--card)]">
             <h3 className="font-semibold mb-2">Connections</h3>
-            <p className="text-3xl font-bold">{usableKeyCount}</p>
-            <p className="text-sm text-[var(--text-secondary)]">active connection{usableKeyCount !== 1 ? 's' : ''}</p>
+            <p className="text-3xl font-bold">{effectiveUsableKeyCount}</p>
+            <p className="text-sm text-[var(--text-secondary)]">active connection{effectiveUsableKeyCount !== 1 ? 's' : ''}</p>
           </div>
         </div>
 
@@ -287,7 +313,7 @@ export default function DashboardPage() {
               usage={newKey.usage}
               onDismiss={() => {
                 setNewKey(null);
-                fetchData();
+                void fetchData();
               }}
             />
           </div>
@@ -305,7 +331,7 @@ export default function DashboardPage() {
                 >
                   + Add Connection
                 </button>
-                {!isSubscribed && keys.length === 0 && (
+                {!isSubscribed && effectiveUsableKeyCount === 0 && (
                   <span className="text-xs text-[var(--text-secondary)]">1 free connection included</span>
                 )}
               </div>
@@ -325,6 +351,8 @@ export default function DashboardPage() {
                   onCreated={(result) => {
                     setNewKey(result);
                     setShowForm(false);
+                    setHasCreatedConnection(true);
+                    void fetchData();
                   }}
                   onSubscriptionRequired={() => {
                     setShowForm(false);
@@ -338,7 +366,7 @@ export default function DashboardPage() {
         )}
 
         {/* Upgrade prompt for free users who have used their free connection */}
-        {!isSubscribed && usableKeyCount > 0 && (
+        {!isSubscribed && effectiveUsableKeyCount > 0 && (
           <div className="mb-8">
             <button
               onClick={() => setShowUpgradeModal(true)}
@@ -367,7 +395,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {keys.length === 0 && !showForm && (
+        {effectiveUsableKeyCount === 0 && !showForm && !newKey && (
           <p className="text-center text-[var(--text-secondary)] py-8">
             No connections yet. Click &quot;Add Connection&quot; to get started — your first one is free.
           </p>
