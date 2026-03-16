@@ -249,6 +249,19 @@ export const CONNECTORS: Record<string, Connector> = {
     ],
     servers: ['ltadatamallsg'],
   },
+  youtube: {
+    label: 'YouTube',
+    fields: [
+      {
+        key: 'apiKey',
+        label: 'YouTube API Key',
+        type: 'password',
+        required: true,
+        helpText: 'Get your API key from Google Cloud Console → APIs & Services → Credentials',
+      },
+    ],
+    servers: ['youtube'],
+  },
 };
 
 // Validate credentials against a connector's field schema

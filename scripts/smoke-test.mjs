@@ -10,6 +10,7 @@ const adminApiKey = 'admin-test-key';
 const encryptionSecret = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 const nextcloudToken = randomBytes(16).toString('hex');
 const ghostToken = randomBytes(16).toString('hex');
+const youtubeToken = randomBytes(16).toString('hex');
 const dataDir = path.join(rootDir, '.tmp-smoke-data');
 
 const child = spawn(
@@ -24,7 +25,7 @@ const child = spawn(
       DATA_DIR: dataDir,
       ADMIN_API_KEY: adminApiKey,
       KEY_ENCRYPTION_SECRET: encryptionSecret,
-      INTERNAL_SERVER_TOKENS: `nextcloud:${nextcloudToken},ghost-cms:${ghostToken}`,
+      INTERNAL_SERVER_TOKENS: `nextcloud:${nextcloudToken},ghost-cms:${ghostToken},youtube:${youtubeToken}`,
       TRUST_PROXY: '0',
     },
     stdio: 'inherit',
@@ -105,6 +106,30 @@ async function run() {
   assert.equal(resolved.body.connector_id, 'nextcloud');
   assert.equal(resolved.body.credentials.nextcloud_username, 'user');
 
+  // YouTube connector: register + resolve
+  const youtubeRegister = await request('/api/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      label: 'YouTube key',
+      connector_id: 'youtube',
+      credentials: { apiKey: 'yt-test-key-123' },
+    }),
+  });
+  assert.equal(youtubeRegister.status, 201);
+
+  const youtubeResolved = await request('/internal/resolve', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${youtubeToken}`,
+    },
+    body: JSON.stringify({ key: youtubeRegister.body.api_key }),
+  });
+  assert.equal(youtubeResolved.status, 200);
+  assert.equal(youtubeResolved.body.connector_id, 'youtube');
+  assert.equal(youtubeResolved.body.credentials.apiKey, 'yt-test-key-123');
+
   const spoofedResolve = await request('/internal/resolve', {
     method: 'POST',
     headers: {
@@ -154,7 +179,7 @@ async function run() {
     headers: { Authorization: `Bearer ${adminApiKey}` },
   });
   assert.equal(listBeforeRevoke.status, 200);
-  assert.equal(listBeforeRevoke.body.total, 2);
+  assert.equal(listBeforeRevoke.body.total, 3);
   const rotatedKeyMetadata = listBeforeRevoke.body.keys.find((entry) => entry.label === 'Primary key');
   const secondKeyMetadata = listBeforeRevoke.body.keys.find((entry) => entry.label === 'Second key');
   assert.ok(rotatedKeyMetadata);
@@ -170,10 +195,10 @@ async function run() {
     headers: { Authorization: `Bearer ${adminApiKey}` },
   });
   assert.equal(listAfterRevoke.status, 200);
-  assert.equal(listAfterRevoke.body.total, 1);
-  assert.equal(listAfterRevoke.body.keys[0].key_prefix, rotatedKeyMetadata.key_prefix);
+  assert.equal(listAfterRevoke.body.total, 2);
+  assert.ok(listAfterRevoke.body.keys.some((entry) => entry.key_prefix === rotatedKeyMetadata.key_prefix));
 
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     const rateLimitedCandidate = await request('/api/register', {
       method: 'POST',
       headers: {
@@ -183,7 +208,7 @@ async function run() {
       body: buildRegisterBody(`Rate test ${attempt}`),
     });
 
-    if (attempt < 3) {
+    if (attempt < 2) {
       assert.equal(rateLimitedCandidate.status, 201);
     } else {
       assert.equal(rateLimitedCandidate.status, 429);
