@@ -349,6 +349,11 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, []);
 
   const detectUserCurrency = useCallback(async () => {
+    const applyCurrency = (code: string) => {
+      setSelectedCurrencyState(code);
+      localStorage.setItem(STORAGE_KEYS.selectedCurrency, code);
+    };
+
     try {
       const savedCurrency = localStorage.getItem(STORAGE_KEYS.selectedCurrency);
       if (savedCurrency && currencies.some(c => c.code === savedCurrency)) {
@@ -356,23 +361,20 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return;
       }
 
-      const localeCurrency = getCurrencyFromBrowserLocale();
-      if (localeCurrency && currencies.some(c => c.code === localeCurrency)) {
-        setSelectedCurrencyState(localeCurrency);
-        localStorage.setItem(STORAGE_KEYS.selectedCurrency, localeCurrency);
-        return;
-      }
-
-      const response = await fetch('https://ipapi.co/json/');
-      if (!response.ok) throw new Error('Geolocation failed');
-
-      const data = await response.json();
-      const countryCode = data.country_code;
-
-      const detectedCurrency = countryToCurrency[countryCode];
-      if (detectedCurrency && currencies.some(c => c.code === detectedCurrency)) {
-        setSelectedCurrencyState(detectedCurrency);
-        localStorage.setItem(STORAGE_KEYS.selectedCurrency, detectedCurrency);
+      // Prefer geolocation (IP-based) over browser locale, because browser
+      // locale often reports "en-US" regardless of the user's actual country.
+      try {
+        const response = await fetch('https://ipapi.co/json/');
+        if (response.ok) {
+          const data = await response.json();
+          const detectedCurrency = countryToCurrency[data.country_code];
+          if (detectedCurrency && currencies.some(c => c.code === detectedCurrency)) {
+            applyCurrency(detectedCurrency);
+            return;
+          }
+        }
+      } catch {
+        // Geolocation failed; default to MYR (prices are in MYR).
       }
     } catch {
       // Default to MYR
