@@ -9,6 +9,7 @@ import ConnectionForm from '@/components/ConnectionForm';
 import ConnectionCard from '@/components/ConnectionCard';
 import KeyDisplay from '@/components/KeyDisplay';
 import LinkedAccounts from '@/components/LinkedAccounts';
+import PriceDisplay from '@/components/PriceDisplay';
 import type { User } from 'firebase/auth';
 
 interface Profile {
@@ -388,7 +389,10 @@ export default function DashboardPage() {
               <p className="text-[var(--text-secondary)] mb-6">
                 Your free plan includes 1 connection. Subscribe to create unlimited MCP connections.
               </p>
-              <p className="text-2xl font-bold mb-6">RM49<span className="text-sm font-normal">/month</span></p>
+              <p className="text-2xl font-bold mb-2"><PriceDisplay amountMYR={49} /></p>
+              <p className="text-xs text-[var(--text-secondary)] mb-6">
+                Local currency is an estimate. Stripe checkout bills RM49/month.
+              </p>
               <div className="flex gap-3">
                 <button
                   onClick={handleUpgrade}

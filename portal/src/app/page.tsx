@@ -10,6 +10,7 @@ import {
   isFirebaseClientConfigured,
 } from '@/lib/firebase';
 import Navbar from '@/components/Navbar';
+import PriceDisplay from '@/components/PriceDisplay';
 import type { User } from 'firebase/auth';
 
 export default function LandingPage() {
@@ -167,6 +168,32 @@ export default function LandingPage() {
               </a>
             </div>
           )}
+        </div>
+
+        <div className="mt-12 grid gap-6 md:grid-cols-2">
+          <div className="rounded-xl border border-[var(--border)] p-6 bg-[var(--card)]">
+            <h3 className="font-semibold text-lg mb-2">Free</h3>
+            <p className="text-3xl font-bold mb-1">RM0</p>
+            <p className="text-sm text-[var(--text-secondary)] mb-4">forever</p>
+            <ul className="text-sm space-y-2 text-[var(--text-secondary)]">
+              <li>1 MCP connection included</li>
+              <li>Full credential encryption</li>
+              <li>Per-server access control</li>
+            </ul>
+          </div>
+          <div className="rounded-xl border-2 border-[var(--primary)] p-6 bg-[var(--card)] relative">
+            <h3 className="font-semibold text-lg mb-2">Pro</h3>
+            <p className="text-3xl font-bold mb-1"><PriceDisplay amountMYR={49} suffix="" /></p>
+            <p className="text-sm text-[var(--text-secondary)] mb-4">per month</p>
+            <p className="text-xs text-[var(--text-secondary)] mb-4">
+              Local currency is an estimate. Stripe checkout bills RM49/month.
+            </p>
+            <ul className="text-sm space-y-2 text-[var(--text-secondary)]">
+              <li>Unlimited MCP connections</li>
+              <li>All supported connectors</li>
+              <li>Key rotation &amp; management</li>
+            </ul>
+          </div>
         </div>
 
         <div className="mt-12 grid gap-6 md:grid-cols-3 text-sm text-[var(--text-secondary)]">

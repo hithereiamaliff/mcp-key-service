@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { getIdToken } from '@/lib/firebase';
+import PriceDisplay from './PriceDisplay';
 
 interface Props {
   status: string;
@@ -72,7 +73,10 @@ export default function SubscriptionCard({ status, periodEnd, previewMode = fals
           <p className="text-sm text-[var(--text-secondary)] mb-3">
             Your first connection is free. Subscribe for unlimited connections.
           </p>
-          <p className="text-2xl font-bold mb-4">RM49<span className="text-sm font-normal">/month</span></p>
+          <p className="text-2xl font-bold mb-4"><PriceDisplay amountMYR={49} /></p>
+          <p className="text-xs text-[var(--text-secondary)] mb-4">
+            Local currency is an estimate. Stripe checkout bills RM49/month.
+          </p>
           <button
             onClick={handleSubscribe}
             disabled={loading || previewMode}
