@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { onAuthChange, signOut } from '@/lib/firebase';
-import CurrencySelector from './CurrencySelector';
 import type { User } from 'firebase/auth';
 
 export default function Navbar() {
@@ -35,7 +34,6 @@ export default function Navbar() {
         )}
       </div>
       <div className="flex items-center gap-3">
-        <CurrencySelector />
         <button
           onClick={toggleTheme}
           className="p-2 rounded hover:bg-[var(--bg-secondary)] text-sm"

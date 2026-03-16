@@ -82,7 +82,7 @@ const CurrencySelector: React.FC = () => {
                 placeholder="Search currency..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-secondary)] text-sm focus:outline-none focus:border-[var(--primary)]"
+                className="w-full pl-8 pr-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-secondary)] text-base sm:text-sm focus:outline-none focus:border-[var(--primary)]"
               />
             </div>
           </div>
