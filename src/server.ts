@@ -101,7 +101,7 @@ app.post('/api/register', registerLimiter.middleware(), (req, res, next) => {
   db.logEvent('register', prefix, null, req.ip || null);
 
   const connector = CONNECTORS[connector_id];
-  const serverName = connector?.servers[0] || connector_id;
+  const urlSegment = connector?.urlPath || connector?.servers[0] || connector_id;
 
   res.status(201).json({
     api_key: apiKey,
@@ -110,7 +110,7 @@ app.post('/api/register', registerLimiter.middleware(), (req, res, next) => {
     created_at: new Date().toISOString(),
     message: 'Save this API key — it cannot be retrieved later.',
     usage: {
-      url_example: `https://mcp.techmavie.digital/${serverName}/mcp?api_key=${apiKey}`,
+      url_example: `https://mcp.techmavie.digital/${urlSegment}/mcp?api_key=${apiKey}`,
       supported_servers: connector?.servers || [],
     },
   });

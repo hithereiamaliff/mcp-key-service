@@ -11,6 +11,7 @@ export interface Connector {
   label: string;
   fields: ConnectorField[];
   servers: string[]; // which MCP server IDs can resolve these credentials
+  urlPath?: string;  // nginx path segment (defaults to servers[0] if omitted)
 }
 
 // Known service types and their credential schemas.
@@ -62,6 +63,7 @@ export const CONNECTORS: Record<string, Connector> = {
       },
     ],
     servers: ['ghost-cms'],
+    urlPath: 'ghostcms',
   },
   'keywords-everywhere': {
     label: 'Keywords Everywhere',
@@ -132,6 +134,7 @@ export const CONNECTORS: Record<string, Connector> = {
       },
     ],
     servers: ['brave-search'],
+    urlPath: 'bravesearch',
   },
   exa: {
     label: 'Exa.ai',
