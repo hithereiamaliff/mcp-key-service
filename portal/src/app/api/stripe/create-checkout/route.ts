@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     mode: 'subscription',
     payment_method_types: ['card'],
     line_items: [{ price: priceId, quantity: 1 }],
-    allow_promotion_codes: false,
+    allow_promotion_codes: true,
     success_url: `${origin}/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/dashboard`,
     client_reference_id: auth.user!.uid,
