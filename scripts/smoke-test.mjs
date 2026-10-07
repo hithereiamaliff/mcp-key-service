@@ -12,6 +12,7 @@ const nextcloudToken = randomBytes(16).toString('hex');
 const ghostToken = randomBytes(16).toString('hex');
 const youtubeToken = randomBytes(16).toString('hex');
 const zerobounceToken = randomBytes(16).toString('hex');
+const plausibleToken = randomBytes(16).toString('hex');
 const dataDir = path.join(rootDir, '.tmp-smoke-data');
 
 const child = spawn(
@@ -26,7 +27,7 @@ const child = spawn(
       DATA_DIR: dataDir,
       ADMIN_API_KEY: adminApiKey,
       KEY_ENCRYPTION_SECRET: encryptionSecret,
-      INTERNAL_SERVER_TOKENS: `nextcloud:${nextcloudToken},ghost-cms:${ghostToken},youtube:${youtubeToken},zerobounce:${zerobounceToken}`,
+      INTERNAL_SERVER_TOKENS: `nextcloud:${nextcloudToken},ghost-cms:${ghostToken},youtube:${youtubeToken},zerobounce:${zerobounceToken},plausible:${plausibleToken}`,
       TRUST_PROXY: '0',
     },
     stdio: 'inherit',
@@ -167,6 +168,37 @@ async function run() {
   });
   assert.equal(crossServerResolve.status, 401);
 
+  // Plausible Analytics connector: register + resolve
+  const plausibleCredentials = {
+    plausible_url: 'https://plausible.example.com',
+    plausible_api_key: 'test-plausible-key',
+    plausible_sites: 'example.com',
+  };
+  const plausibleRegister = await request('/api/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      label: 'Plausible key',
+      connector_id: 'plausible',
+      credentials: plausibleCredentials,
+    }),
+  });
+  assert.equal(plausibleRegister.status, 201);
+  assert.match(plausibleRegister.body.usage.url_example, /\/plausibleanalytics\/mcp\?api_key=/);
+
+  const plausibleResolved = await request('/internal/resolve', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${plausibleToken}`,
+    },
+    body: JSON.stringify({ key: plausibleRegister.body.api_key }),
+  });
+  assert.equal(plausibleResolved.status, 200);
+  assert.equal(plausibleResolved.body.valid, true);
+  assert.equal(plausibleResolved.body.connector_id, 'plausible');
+  assert.deepEqual(plausibleResolved.body.credentials, plausibleCredentials);
+
   const spoofedResolve = await request('/internal/resolve', {
     method: 'POST',
     headers: {
@@ -216,7 +248,7 @@ async function run() {
     headers: { Authorization: `Bearer ${adminApiKey}` },
   });
   assert.equal(listBeforeRevoke.status, 200);
-  assert.equal(listBeforeRevoke.body.total, 4); // rotated nextcloud + youtube + zerobounce + second
+  assert.equal(listBeforeRevoke.body.total, 5); // rotated nextcloud + youtube + zerobounce + plausible + second
   const rotatedKeyMetadata = listBeforeRevoke.body.keys.find((entry) => entry.label === 'Primary key');
   const secondKeyMetadata = listBeforeRevoke.body.keys.find((entry) => entry.label === 'Second key');
   assert.ok(rotatedKeyMetadata);
@@ -232,12 +264,12 @@ async function run() {
     headers: { Authorization: `Bearer ${adminApiKey}` },
   });
   assert.equal(listAfterRevoke.status, 200);
-  assert.equal(listAfterRevoke.body.total, 3);
+  assert.equal(listAfterRevoke.body.total, 4);
   assert.ok(listAfterRevoke.body.keys.some((entry) => entry.key_prefix === rotatedKeyMetadata.key_prefix));
 
-  // /api/register allows 5 requests per hour per IP. Four were used above (nextcloud,
-  // youtube, zerobounce, second key), so one more succeeds and the next is limited, even
-  // with a different X-Forwarded-For (TRUST_PROXY=0 means it must be ignored).
+  // /api/register allows 5 requests per hour per IP. All five were used above (nextcloud,
+  // youtube, zerobounce, plausible, second key), so the next one is limited, even with a
+  // different X-Forwarded-For (TRUST_PROXY=0 means it must be ignored).
   for (let attempt = 0; attempt < 2; attempt++) {
     const rateLimitedCandidate = await request('/api/register', {
       method: 'POST',
@@ -248,18 +280,14 @@ async function run() {
       body: buildRegisterBody(`Rate test ${attempt}`),
     });
 
-    if (attempt < 1) {
-      assert.equal(rateLimitedCandidate.status, 201);
-    } else {
-      assert.equal(rateLimitedCandidate.status, 429);
-    }
+    assert.equal(rateLimitedCandidate.status, 429);
   }
 
   const stats = await request('/admin/stats', {
     headers: { Authorization: `Bearer ${adminApiKey}` },
   });
   assert.equal(stats.status, 200);
-  assert.equal(stats.body.totalKeys, 4); // active: rotated nextcloud, youtube, zerobounce, rate test 0
+  assert.equal(stats.body.totalKeys, 4); // active: rotated nextcloud, youtube, zerobounce, plausible
 }
 
 try {
