@@ -61,6 +61,7 @@ Both run as Docker containers and communicate over an internal Docker network. T
 | `datagovsg` | Singapore Open Data (data.gov.sg) | API Key (optional) |
 | `youtube` | YouTube | API Key |
 | `zerobounce` | ZeroBounce | API Key, Region (optional: `us` or `eu`) |
+| `plausible` | Plausible Analytics | Stats API Key (Instance URL, Site Domains, Plugin Tokens, Allow Write Tools optional) |
 
 Connector definitions live in `src/connectors.ts`. The portal renders credential forms dynamically from these schemas.
 
@@ -128,7 +129,7 @@ For detailed integration instructions, see [docs/mcp-server-integration.md](docs
 INTERNAL_SERVER_TOKENS=nextcloud:token1,ghost-cms:token2,github:token3,...
 ```
 
-Supported server IDs: `nextcloud`, `ghost-cms`, `keywords-everywhere`, `grabmaps`, `github`, `brave-search`, `exa`, `perplexity`, `reddit`, `openwebui`, `datagovmy`, `ltadatamallsg`, `datagovsg`, `youtube`, `zerobounce`
+Supported server IDs: `nextcloud`, `ghost-cms`, `keywords-everywhere`, `grabmaps`, `github`, `brave-search`, `exa`, `perplexity`, `reddit`, `openwebui`, `datagovmy`, `ltadatamallsg`, `datagovsg`, `youtube`, `zerobounce`, `plausible`
 
 Generate each token with `openssl rand -hex 32`.
 

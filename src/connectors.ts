@@ -302,6 +302,52 @@ export const CONNECTORS: Record<string, Connector> = {
     ],
     servers: ['zerobounce'],
   },
+  plausible: {
+    label: 'Plausible Analytics',
+    fields: [
+      {
+        key: 'plausible_url',
+        label: 'Plausible Instance URL',
+        type: 'url',
+        required: false,
+        placeholder: 'https://plausible.example.com',
+        helpText: 'Your self-hosted Plausible URL. Leave blank for Plausible Cloud (https://plausible.io).',
+      },
+      {
+        key: 'plausible_api_key',
+        label: 'Stats API Key',
+        type: 'password',
+        required: true,
+        helpText: 'Plausible → Account Settings → API Keys → New API Key.',
+      },
+      {
+        key: 'plausible_sites',
+        label: 'Site Domains',
+        type: 'text',
+        required: false,
+        placeholder: 'example.com, blog.example.com',
+        helpText: 'Comma-separated. The first is the default site. Needed on self-hosted (no Sites API) so tools know your sites.',
+      },
+      {
+        key: 'plausible_plugin_tokens',
+        label: 'Plugin Tokens (optional)',
+        type: 'password',
+        required: false,
+        placeholder: 'example.com=TOKEN, blog.example.com=TOKEN',
+        helpText: 'Enables goal / shared-link / custom-property tools. Site Settings → Integrations → Plugin Tokens.',
+      },
+      {
+        key: 'plausible_allow_writes',
+        label: 'Allow Write Tools',
+        type: 'text',
+        required: false,
+        placeholder: 'no',
+        helpText: 'Type "yes" to enable tools that change data (create goals, shared links, send events).',
+      },
+    ],
+    servers: ['plausible'],
+    urlPath: 'plausibleanalytics',
+  },
 };
 
 // Validate credentials against a connector's field schema
