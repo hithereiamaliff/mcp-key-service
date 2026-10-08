@@ -265,6 +265,29 @@ export const CONNECTORS: Record<string, Connector> = {
     ],
     servers: ['youtube'],
   },
+  zerobounce: {
+    label: 'ZeroBounce',
+    fields: [
+      {
+        key: 'apiKey',
+        label: 'ZeroBounce API Key',
+        type: 'password',
+        required: true,
+        helpText: 'Get your API key from the ZeroBounce dashboard → API → API Keys',
+      },
+      {
+        // Free text (the portal has no dropdown field type yet). The MCP server only
+        // accepts blank, "us" or "eu" and maps them to ZeroBounce's own hosts.
+        key: 'region',
+        label: 'API Region (optional)',
+        type: 'text',
+        required: false,
+        placeholder: 'us or eu',
+        helpText: 'Leave blank for the default endpoint. "us" = US-only processing, "eu" = EU-only processing.',
+      },
+    ],
+    servers: ['zerobounce'],
+  },
 };
 
 // Validate credentials against a connector's field schema

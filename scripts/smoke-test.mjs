@@ -11,6 +11,7 @@ const encryptionSecret = '0123456789abcdef0123456789abcdef0123456789abcdef012345
 const nextcloudToken = randomBytes(16).toString('hex');
 const ghostToken = randomBytes(16).toString('hex');
 const youtubeToken = randomBytes(16).toString('hex');
+const zerobounceToken = randomBytes(16).toString('hex');
 const dataDir = path.join(rootDir, '.tmp-smoke-data');
 
 const child = spawn(
@@ -25,7 +26,7 @@ const child = spawn(
       DATA_DIR: dataDir,
       ADMIN_API_KEY: adminApiKey,
       KEY_ENCRYPTION_SECRET: encryptionSecret,
-      INTERNAL_SERVER_TOKENS: `nextcloud:${nextcloudToken},ghost-cms:${ghostToken},youtube:${youtubeToken}`,
+      INTERNAL_SERVER_TOKENS: `nextcloud:${nextcloudToken},ghost-cms:${ghostToken},youtube:${youtubeToken},zerobounce:${zerobounceToken}`,
       TRUST_PROXY: '0',
     },
     stdio: 'inherit',
@@ -130,6 +131,42 @@ async function run() {
   assert.equal(youtubeResolved.body.connector_id, 'youtube');
   assert.equal(youtubeResolved.body.credentials.apiKey, 'yt-test-key-123');
 
+  // ZeroBounce connector: register (with optional region) + resolve
+  const zerobounceRegister = await request('/api/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      label: 'ZeroBounce key',
+      connector_id: 'zerobounce',
+      credentials: { apiKey: 'zb-test-key-123', region: 'us' },
+    }),
+  });
+  assert.equal(zerobounceRegister.status, 201);
+
+  const zerobounceResolved = await request('/internal/resolve', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${zerobounceToken}`,
+    },
+    body: JSON.stringify({ key: zerobounceRegister.body.api_key, server_id: 'zerobounce' }),
+  });
+  assert.equal(zerobounceResolved.status, 200);
+  assert.equal(zerobounceResolved.body.connector_id, 'zerobounce');
+  assert.equal(zerobounceResolved.body.credentials.apiKey, 'zb-test-key-123');
+  assert.equal(zerobounceResolved.body.credentials.region, 'us');
+
+  // Another server's token must not be able to read ZeroBounce credentials
+  const crossServerResolve = await request('/internal/resolve', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${youtubeToken}`,
+    },
+    body: JSON.stringify({ key: zerobounceRegister.body.api_key }),
+  });
+  assert.equal(crossServerResolve.status, 401);
+
   const spoofedResolve = await request('/internal/resolve', {
     method: 'POST',
     headers: {
@@ -179,7 +216,7 @@ async function run() {
     headers: { Authorization: `Bearer ${adminApiKey}` },
   });
   assert.equal(listBeforeRevoke.status, 200);
-  assert.equal(listBeforeRevoke.body.total, 3);
+  assert.equal(listBeforeRevoke.body.total, 4); // rotated nextcloud + youtube + zerobounce + second
   const rotatedKeyMetadata = listBeforeRevoke.body.keys.find((entry) => entry.label === 'Primary key');
   const secondKeyMetadata = listBeforeRevoke.body.keys.find((entry) => entry.label === 'Second key');
   assert.ok(rotatedKeyMetadata);
@@ -195,10 +232,13 @@ async function run() {
     headers: { Authorization: `Bearer ${adminApiKey}` },
   });
   assert.equal(listAfterRevoke.status, 200);
-  assert.equal(listAfterRevoke.body.total, 2);
+  assert.equal(listAfterRevoke.body.total, 3);
   assert.ok(listAfterRevoke.body.keys.some((entry) => entry.key_prefix === rotatedKeyMetadata.key_prefix));
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // /api/register allows 5 requests per hour per IP. Four were used above (nextcloud,
+  // youtube, zerobounce, second key), so one more succeeds and the next is limited, even
+  // with a different X-Forwarded-For (TRUST_PROXY=0 means it must be ignored).
+  for (let attempt = 0; attempt < 2; attempt++) {
     const rateLimitedCandidate = await request('/api/register', {
       method: 'POST',
       headers: {
@@ -208,7 +248,7 @@ async function run() {
       body: buildRegisterBody(`Rate test ${attempt}`),
     });
 
-    if (attempt < 2) {
+    if (attempt < 1) {
       assert.equal(rateLimitedCandidate.status, 201);
     } else {
       assert.equal(rateLimitedCandidate.status, 429);
@@ -219,7 +259,7 @@ async function run() {
     headers: { Authorization: `Bearer ${adminApiKey}` },
   });
   assert.equal(stats.status, 200);
-  assert.equal(stats.body.totalKeys, 4);
+  assert.equal(stats.body.totalKeys, 4); // active: rotated nextcloud, youtube, zerobounce, rate test 0
 }
 
 try {
