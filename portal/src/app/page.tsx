@@ -102,7 +102,7 @@ export default function LandingPage() {
           <p className="max-w-2xl mx-auto mt-4 text-sm leading-7 text-[var(--text-secondary)]">
             Use it when you want Claude Desktop, Open WebUI, or other MCP clients to connect
             to services like Nextcloud, GitHub, Exa, Brave, Perplexity, GrabMaps, Reddit,
-            Ghost CMS, ZeroBounce, Malaysia Open Data, Singapore LTA DataMall, and the rest of the
+            Ghost CMS, Forgejo, ZeroBounce, Malaysia Open Data, Singapore LTA DataMall, and the rest of the
             supported MCP server set without exposing raw API credentials in your client config.
           </p>
         </div>

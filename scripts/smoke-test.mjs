@@ -13,6 +13,7 @@ const ghostToken = randomBytes(16).toString('hex');
 const youtubeToken = randomBytes(16).toString('hex');
 const zerobounceToken = randomBytes(16).toString('hex');
 const plausibleToken = randomBytes(16).toString('hex');
+const forgejoToken = randomBytes(16).toString('hex');
 const dataDir = path.join(rootDir, '.tmp-smoke-data');
 
 const child = spawn(
@@ -27,7 +28,7 @@ const child = spawn(
       DATA_DIR: dataDir,
       ADMIN_API_KEY: adminApiKey,
       KEY_ENCRYPTION_SECRET: encryptionSecret,
-      INTERNAL_SERVER_TOKENS: `nextcloud:${nextcloudToken},ghost-cms:${ghostToken},youtube:${youtubeToken},zerobounce:${zerobounceToken},plausible:${plausibleToken}`,
+      INTERNAL_SERVER_TOKENS: `nextcloud:${nextcloudToken},ghost-cms:${ghostToken},youtube:${youtubeToken},zerobounce:${zerobounceToken},plausible:${plausibleToken},forgejo:${forgejoToken}`,
       TRUST_PROXY: '0',
     },
     stdio: 'inherit',
@@ -85,6 +86,17 @@ function buildRegisterBody(label) {
 async function run() {
   await fs.rm(dataDir, { recursive: true, force: true });
   await waitForHealth();
+
+  // URL fields only accept web URLs (checked directly: every /api/register slot is used below).
+  const { validateCredentials } = await import('../dist/connectors.js');
+  const forgejoField = (forgejo_url) => validateCredentials('forgejo', { forgejo_url, forgejo_token: 't' });
+  assert.equal(forgejoField('https://git.example.com').valid, true);
+  assert.equal(forgejoField('http://git.example.com').valid, true);
+  assert.match(forgejoField('file:///etc/passwd').error, /must start with https:\/\//);
+  assert.match(forgejoField('javascript:alert(1)').error, /must start with https:\/\//);
+  assert.match(forgejoField('not a url').error, /valid URL/);
+  assert.equal(forgejoField('  ').valid, false, 'blank after trimming counts as missing');
+  assert.deepEqual(forgejoField('  https://git.example.com/ ').credentials, { forgejo_url: 'https://git.example.com/', forgejo_token: 't' });
 
   const registerPage = await request('/register', { redirect: 'manual' });
   assert.equal(registerPage.status, 302);
@@ -238,18 +250,50 @@ async function run() {
   });
   assert.equal(rotatedKeyResolve.status, 200);
 
+  // Forgejo connector: register + resolve. It doubles as the "Second key" that is revoked
+  // below, so it doesn't use up another /api/register slot (5 per hour per IP).
+  // Whitespace around values is trimmed before the credentials are stored.
+  const forgejoCredentials = { forgejo_url: 'https://git.example.com', forgejo_token: 'test-forgejo-token' };
   const secondRegister = await request('/api/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: buildRegisterBody('Second key'),
+    body: JSON.stringify({
+      label: 'Second key',
+      connector_id: 'forgejo',
+      credentials: { forgejo_url: ' https://git.example.com ', forgejo_token: ' test-forgejo-token\n' },
+    }),
   });
   assert.equal(secondRegister.status, 201);
+  assert.match(secondRegister.body.usage.url_example, /\/forgejo\/mcp\?api_key=/);
+
+  const forgejoResolved = await request('/internal/resolve', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${forgejoToken}`,
+    },
+    body: JSON.stringify({ key: secondRegister.body.api_key, server_id: 'forgejo' }),
+  });
+  assert.equal(forgejoResolved.status, 200);
+  assert.equal(forgejoResolved.body.connector_id, 'forgejo');
+  assert.deepEqual(forgejoResolved.body.credentials, forgejoCredentials);
+
+  // Another server's token can't resolve a Forgejo key.
+  const forgejoCrossServer = await request('/internal/resolve', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${zerobounceToken}`,
+    },
+    body: JSON.stringify({ key: secondRegister.body.api_key }),
+  });
+  assert.equal(forgejoCrossServer.status, 401);
 
   const listBeforeRevoke = await request('/admin/keys', {
     headers: { Authorization: `Bearer ${adminApiKey}` },
   });
   assert.equal(listBeforeRevoke.status, 200);
-  assert.equal(listBeforeRevoke.body.total, 5); // rotated nextcloud + youtube + zerobounce + plausible + second
+  assert.equal(listBeforeRevoke.body.total, 5); // rotated nextcloud + youtube + zerobounce + plausible + second (forgejo)
   const rotatedKeyMetadata = listBeforeRevoke.body.keys.find((entry) => entry.label === 'Primary key');
   const secondKeyMetadata = listBeforeRevoke.body.keys.find((entry) => entry.label === 'Second key');
   assert.ok(rotatedKeyMetadata);
