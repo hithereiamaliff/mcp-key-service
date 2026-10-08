@@ -348,35 +348,71 @@ export const CONNECTORS: Record<string, Connector> = {
     servers: ['plausible'],
     urlPath: 'plausibleanalytics',
   },
+  forgejo: {
+    label: 'Forgejo (self-hosted or Codeberg)',
+    fields: [
+      {
+        key: 'forgejo_url',
+        label: 'Forgejo Instance URL',
+        type: 'url',
+        required: true,
+        placeholder: 'https://git.example.com',
+        helpText:
+          'Base URL of your Forgejo instance, e.g. https://codeberg.org. Must be reachable over HTTPS from the internet.',
+      },
+      {
+        key: 'forgejo_token',
+        label: 'Access Token',
+        type: 'password',
+        required: true,
+        helpText:
+          'Forgejo → Settings → Applications → Generate New Token. Grant read/write for repository, issue, notification and user ' +
+          '(add organization/package/admin only if needed). Use read-only scopes for a read-only connection.',
+      },
+    ],
+    servers: ['forgejo'],
+  },
 };
 
 // Validate credentials against a connector's field schema
+// and return a normalised copy (string values trimmed) to store.
 export function validateCredentials(
   connectorId: string,
   credentials: Record<string, unknown>
-): { valid: boolean; error?: string } {
+): { valid: boolean; error?: string; credentials?: Record<string, unknown> } {
   const connector = CONNECTORS[connectorId];
   if (!connector) {
     return { valid: false, error: `Unknown connector: ${connectorId}` };
   }
 
+  // Trim whitespace pasted around values (tokens, URLs) before validating and storing them.
+  const normalized: Record<string, unknown> = { ...credentials };
+  for (const [key, value] of Object.entries(normalized)) {
+    if (typeof value === 'string') normalized[key] = value.trim();
+  }
+
   for (const field of connector.fields) {
-    if (field.required && !credentials[field.key]) {
+    if (field.required && !normalized[field.key]) {
       return { valid: false, error: `Missing required field: ${field.label}` };
     }
-    if (credentials[field.key] !== undefined && typeof credentials[field.key] !== 'string') {
+    if (normalized[field.key] !== undefined && typeof normalized[field.key] !== 'string') {
       return { valid: false, error: `Field ${field.label} must be a string` };
     }
-    if (field.type === 'url' && credentials[field.key]) {
+    if (field.type === 'url' && normalized[field.key]) {
+      let url: URL;
       try {
-        new URL(credentials[field.key] as string);
+        url = new URL(normalized[field.key] as string);
       } catch {
         return { valid: false, error: `Field ${field.label} must be a valid URL` };
+      }
+      // Only web URLs: MCP servers call these, so file:, ftp:, javascript: etc. make no sense.
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+        return { valid: false, error: `Field ${field.label} must start with https:// (or http://)` };
       }
     }
   }
 
-  return { valid: true };
+  return { valid: true, credentials: normalized };
 }
 
 // Check if a server_id is allowed to access a connector's credentials

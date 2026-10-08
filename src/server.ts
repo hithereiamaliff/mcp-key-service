@@ -91,7 +91,7 @@ app.post('/api/register', registerLimiter.middleware(), (req, res, next) => {
   const apiKey = generateApiKey();
   const hash = hashKey(apiKey);
   const prefix = keyPrefix(apiKey);
-  const encrypted = encrypt(JSON.stringify(credentials), config.encryptionSecret);
+  const encrypted = encrypt(JSON.stringify(validation.credentials ?? credentials), config.encryptionSecret);
 
   if (req.user) {
     db.registerWithUser(hash, prefix, label.trim(), connector_id, encrypted, req.user.uid);
