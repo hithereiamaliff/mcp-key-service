@@ -35,7 +35,8 @@ const child = spawn(
 );
 
 async function waitForHealth() {
-  for (let attempt = 0; attempt < 50; attempt++) {
+  // Up to 20 s: a cold start (first build, native modules) can take ~5 s on its own
+  for (let attempt = 0; attempt < 200; attempt++) {
     try {
       const response = await fetch(`http://127.0.0.1:${port}/health`);
       if (response.ok) {
