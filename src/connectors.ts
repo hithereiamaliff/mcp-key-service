@@ -252,6 +252,20 @@ export const CONNECTORS: Record<string, Connector> = {
     ],
     servers: ['ltadatamallsg'],
   },
+  datagovsg: {
+    label: 'Singapore Open Data (data.gov.sg)',
+    fields: [
+      {
+        key: 'apiKey',
+        label: 'data.gov.sg API Key',
+        type: 'password',
+        required: false,
+        helpText:
+          'Optional — gives you your own rate limit. Create one at data.gov.sg (Log in → API Keys). Leave blank to use the shared server key.',
+      },
+    ],
+    servers: ['datagovsg'],
+  },
   youtube: {
     label: 'YouTube',
     fields: [

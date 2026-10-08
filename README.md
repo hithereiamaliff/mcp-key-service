@@ -58,6 +58,7 @@ Both run as Docker containers and communicate over an internal Docker network. T
 | `openwebui` | Open WebUI | URL, API Key |
 | `datagovmy` | Malaysia Open Data | Google Maps Key, GrabMaps Key, AWS creds (all optional) |
 | `ltadatamallsg` | Singapore LTA DataMall | API Key (optional) |
+| `datagovsg` | Singapore Open Data (data.gov.sg) | API Key (optional) |
 | `youtube` | YouTube | API Key |
 | `zerobounce` | ZeroBounce | API Key, Region (optional: `us` or `eu`) |
 
@@ -127,7 +128,7 @@ For detailed integration instructions, see [docs/mcp-server-integration.md](docs
 INTERNAL_SERVER_TOKENS=nextcloud:token1,ghost-cms:token2,github:token3,...
 ```
 
-Supported server IDs: `nextcloud`, `ghost-cms`, `keywords-everywhere`, `grabmaps`, `github`, `brave-search`, `exa`, `perplexity`, `reddit`, `openwebui`, `datagovmy`, `ltadatamallsg`, `youtube`, `zerobounce`
+Supported server IDs: `nextcloud`, `ghost-cms`, `keywords-everywhere`, `grabmaps`, `github`, `brave-search`, `exa`, `perplexity`, `reddit`, `openwebui`, `datagovmy`, `ltadatamallsg`, `datagovsg`, `youtube`, `zerobounce`
 
 Generate each token with `openssl rand -hex 32`.
 
