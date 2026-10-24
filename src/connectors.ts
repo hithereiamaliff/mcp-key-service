@@ -372,6 +372,38 @@ export const CONNECTORS: Record<string, Connector> = {
     ],
     servers: ['forgejo'],
   },
+  calcom: {
+    label: 'Cal.com / Cal.diy',
+    fields: [
+      {
+        key: 'calcom_api_url',
+        label: 'API URL',
+        type: 'url',
+        required: false,
+        placeholder: 'https://cal.example.com/api/v2',
+        helpText: 'Your self-hosted Cal.diy / Cal.com API v2 URL. Leave blank for Cal.com Cloud (https://api.cal.com/v2).',
+      },
+      {
+        key: 'calcom_api_key',
+        label: 'API Key',
+        type: 'password',
+        required: true,
+        helpText: 'Cal → Settings → Developer → API Keys → New API key (starts with cal_).',
+      },
+      {
+        // Free text (the portal has no dropdown field type yet). The MCP server accepts
+        // "read" (default), "bookings" or "full" and falls back to read for anything else.
+        key: 'calcom_access',
+        label: 'Access Level',
+        type: 'text',
+        required: false,
+        placeholder: 'read',
+        helpText:
+          '"read" (default) = view only · "bookings" = also create / reschedule / cancel bookings · "full" = also change event types, availability, webhooks and profile.',
+      },
+    ],
+    servers: ['calcom'],
+  },
 };
 
 // Validate credentials against a connector's field schema

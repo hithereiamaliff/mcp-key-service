@@ -14,6 +14,7 @@ const youtubeToken = randomBytes(16).toString('hex');
 const zerobounceToken = randomBytes(16).toString('hex');
 const plausibleToken = randomBytes(16).toString('hex');
 const forgejoToken = randomBytes(16).toString('hex');
+const calcomToken = randomBytes(16).toString('hex');
 const dataDir = path.join(rootDir, '.tmp-smoke-data');
 
 const child = spawn(
@@ -28,7 +29,7 @@ const child = spawn(
       DATA_DIR: dataDir,
       ADMIN_API_KEY: adminApiKey,
       KEY_ENCRYPTION_SECRET: encryptionSecret,
-      INTERNAL_SERVER_TOKENS: `nextcloud:${nextcloudToken},ghost-cms:${ghostToken},youtube:${youtubeToken},zerobounce:${zerobounceToken},plausible:${plausibleToken},forgejo:${forgejoToken}`,
+      INTERNAL_SERVER_TOKENS: `nextcloud:${nextcloudToken},ghost-cms:${ghostToken},youtube:${youtubeToken},zerobounce:${zerobounceToken},plausible:${plausibleToken},forgejo:${forgejoToken},calcom:${calcomToken}`,
       TRUST_PROXY: '0',
     },
     stdio: 'inherit',
@@ -88,7 +89,7 @@ async function run() {
   await waitForHealth();
 
   // URL fields only accept web URLs (checked directly: every /api/register slot is used below).
-  const { validateCredentials } = await import('../dist/connectors.js');
+  const { CONNECTORS, isServerAllowed, validateCredentials } = await import('../dist/connectors.js');
   const forgejoField = (forgejo_url) => validateCredentials('forgejo', { forgejo_url, forgejo_token: 't' });
   assert.equal(forgejoField('https://git.example.com').valid, true);
   assert.equal(forgejoField('http://git.example.com').valid, true);
@@ -97,6 +98,26 @@ async function run() {
   assert.match(forgejoField('not a url').error, /valid URL/);
   assert.equal(forgejoField('  ').valid, false, 'blank after trimming counts as missing');
   assert.deepEqual(forgejoField('  https://git.example.com/ ').credentials, { forgejo_url: 'https://git.example.com/', forgejo_token: 't' });
+
+  // Cal.com connector: API key required, API URL optional (blank = Cal.com Cloud), keys only
+  // resolvable by the calcom server, user URLs under /calcom/.
+  const calcom = (credentials) => validateCredentials('calcom', credentials);
+  assert.equal(calcom({ calcom_api_key: 'cal_test' }).valid, true);
+  assert.deepEqual(
+    calcom({ calcom_api_url: ' https://cal.example.com/api/v2 ', calcom_api_key: 'cal_test', calcom_access: 'bookings' }).credentials,
+    { calcom_api_url: 'https://cal.example.com/api/v2', calcom_api_key: 'cal_test', calcom_access: 'bookings' },
+  );
+  assert.match(calcom({ calcom_api_url: 'ftp://cal.example.com', calcom_api_key: 'cal_test' }).error, /must start with https:\/\//);
+  assert.match(calcom({ calcom_api_url: 'https://cal.example.com/api/v2' }).error, /Missing required field: API Key/);
+  assert.equal(isServerAllowed('calcom', 'calcom'), true);
+  assert.equal(isServerAllowed('calcom', 'plausible'), false);
+  assert.equal(CONNECTORS.calcom.urlPath ?? CONNECTORS.calcom.servers[0], 'calcom');
+
+  // The portal's registration form lists the connector.
+  const connectorList = await request('/api/connectors');
+  assert.equal(connectorList.status, 200);
+  assert.deepEqual(connectorList.body.connectors.calcom.servers, ['calcom']);
+  assert.deepEqual(connectorList.body.connectors.calcom.fields.map((field) => field.key), ['calcom_api_url', 'calcom_api_key', 'calcom_access']);
 
   const registerPage = await request('/register', { redirect: 'manual' });
   assert.equal(registerPage.status, 302);
@@ -288,6 +309,29 @@ async function run() {
     body: JSON.stringify({ key: secondRegister.body.api_key }),
   });
   assert.equal(forgejoCrossServer.status, 401);
+
+  // Cal.com connector over HTTP, without a registration (every /api/register slot is used): the
+  // calcom token is a known internal caller (401 for an unknown key, not 403), and it cannot
+  // resolve another connector's key.
+  const calcomUnknownKey = await request('/internal/resolve', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${calcomToken}`,
+    },
+    body: JSON.stringify({ key: 'usr_not_a_registered_key', server_id: 'calcom' }),
+  });
+  assert.equal(calcomUnknownKey.status, 401);
+
+  const calcomReadsForgejo = await request('/internal/resolve', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${calcomToken}`,
+    },
+    body: JSON.stringify({ key: secondRegister.body.api_key }),
+  });
+  assert.equal(calcomReadsForgejo.status, 401);
 
   const listBeforeRevoke = await request('/admin/keys', {
     headers: { Authorization: `Bearer ${adminApiKey}` },
